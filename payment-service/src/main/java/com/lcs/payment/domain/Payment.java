@@ -36,6 +36,13 @@ public class Payment {
     @Column(name = "idempotency_key", nullable = false, unique = true, length = 36)
     private String idempotencyKey;
 
+    // 회차. (subscription_id, billing_cycle)에 unique 제약이 있다 (D-26).
+    // 이벤트 UUID 멱등키는 "같은 이벤트의 재전송"을 막고,
+    // 이 조합은 "같은 회차를 다른 경로로 다시 청구하는 것"을 막는다.
+    // 스케줄러가 다중 인스턴스로 돌아도 회차당 한 건만 남는다.
+    @Column(name = "billing_cycle", nullable = false)
+    private Integer billingCycle;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -47,21 +54,26 @@ public class Payment {
     }
 
     private Payment(Long subscriptionId, Long memberId, Long amount,
-                    PaymentStatus status, String idempotencyKey) {
+                    PaymentStatus status, String idempotencyKey, int billingCycle) {
         this.subscriptionId = subscriptionId;
         this.memberId = memberId;
         this.amount = amount;
         this.status = status;
         this.idempotencyKey = idempotencyKey;
+        this.billingCycle = billingCycle;
         this.createdAt = Instant.now();
     }
 
-    public static Payment approved(Long subscriptionId, Long memberId, Long amount, String idempotencyKey) {
-        return new Payment(subscriptionId, memberId, amount, PaymentStatus.APPROVED, idempotencyKey);
+    public static Payment approved(Long subscriptionId, Long memberId, Long amount,
+                                   String idempotencyKey, int billingCycle) {
+        return new Payment(subscriptionId, memberId, amount, PaymentStatus.APPROVED,
+                idempotencyKey, billingCycle);
     }
 
-    public static Payment failed(Long subscriptionId, Long memberId, Long amount, String idempotencyKey) {
-        return new Payment(subscriptionId, memberId, amount, PaymentStatus.FAILED, idempotencyKey);
+    public static Payment failed(Long subscriptionId, Long memberId, Long amount,
+                                 String idempotencyKey, int billingCycle) {
+        return new Payment(subscriptionId, memberId, amount, PaymentStatus.FAILED,
+                idempotencyKey, billingCycle);
     }
 
     /** 환불. 멱등 — 이미 REFUNDED면 false. APPROVED 상태만 환불 가능. */
@@ -96,5 +108,9 @@ public class Payment {
 
     public String getIdempotencyKey() {
         return idempotencyKey;
+    }
+
+    public Integer getBillingCycle() {
+        return billingCycle;
     }
 }

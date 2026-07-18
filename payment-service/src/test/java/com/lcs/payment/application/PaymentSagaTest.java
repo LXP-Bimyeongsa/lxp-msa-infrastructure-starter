@@ -28,7 +28,7 @@ class PaymentSagaTest {
     void approvesAndEmitsCompleted() {
         String eventId = UUID.randomUUID().toString();
 
-        paymentService.processPayment(eventId, 10L, 1L, 29_000L);
+        paymentService.processInitialPayment(eventId, 10L, 1L, 29_000L);
 
         List<Payment> payments = paymentService.findBySubscription(10L);
         assertThat(payments).hasSize(1);
@@ -42,8 +42,8 @@ class PaymentSagaTest {
     void duplicateEventProcessedOnce() {
         String eventId = UUID.randomUUID().toString();
 
-        paymentService.processPayment(eventId, 11L, 1L, 29_000L);
-        paymentService.processPayment(eventId, 11L, 1L, 29_000L); // at-least-once 재전송
+        paymentService.processInitialPayment(eventId, 11L, 1L, 29_000L);
+        paymentService.processInitialPayment(eventId, 11L, 1L, 29_000L); // at-least-once 재전송
 
         assertThat(paymentService.findBySubscription(11L)).hasSize(1);
         // 발행 이벤트도 한 건이어야 한다
@@ -57,7 +57,7 @@ class PaymentSagaTest {
     @Test
     @DisplayName("금액이 0 이하면 FAILED 저장 + PaymentFailed 발행")
     void invalidAmountFails() {
-        paymentService.processPayment(UUID.randomUUID().toString(), 12L, 1L, 0L);
+        paymentService.processInitialPayment(UUID.randomUUID().toString(), 12L, 1L, 0L);
 
         assertThat(paymentService.findBySubscription(12L).get(0).getStatus())
                 .isEqualTo(PaymentStatus.FAILED);
@@ -68,9 +68,9 @@ class PaymentSagaTest {
     @Test
     @DisplayName("해지 이벤트를 받으면 승인 결제를 환불하고 PaymentRefunded를 발행한다 (D-16)")
     void refundOnCancellation() {
-        paymentService.processPayment(UUID.randomUUID().toString(), 13L, 1L, 29_000L);
+        paymentService.processInitialPayment(UUID.randomUUID().toString(), 13L, 1L, 29_000L);
 
-        paymentService.refund(13L);
+        paymentService.cancelBillingAndRefund(13L);
 
         assertThat(paymentService.findBySubscription(13L).get(0).getStatus())
                 .isEqualTo(PaymentStatus.REFUNDED);
@@ -82,10 +82,10 @@ class PaymentSagaTest {
     @Test
     @DisplayName("환불도 멱등이다 — 해지 이벤트가 두 번 와도 환불 이벤트는 한 건")
     void refundIsIdempotent() {
-        paymentService.processPayment(UUID.randomUUID().toString(), 14L, 1L, 29_000L);
+        paymentService.processInitialPayment(UUID.randomUUID().toString(), 14L, 1L, 29_000L);
 
-        paymentService.refund(14L);
-        paymentService.refund(14L); // 재전송
+        paymentService.cancelBillingAndRefund(14L);
+        paymentService.cancelBillingAndRefund(14L); // 재전송
 
         long refundedCount = outboxRepository.findAll().stream()
                 .filter(m -> m.getEventType().equals("PaymentRefunded"))
@@ -99,7 +99,7 @@ class PaymentSagaTest {
     void refundWithoutPaymentIsNoop() {
         long before = outboxRepository.count();
 
-        paymentService.refund(999L);
+        paymentService.cancelBillingAndRefund(999L);
 
         assertThat(outboxRepository.count()).isEqualTo(before);
     }

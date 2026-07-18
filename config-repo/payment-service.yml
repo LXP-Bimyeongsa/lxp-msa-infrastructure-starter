@@ -27,3 +27,10 @@ outbox:
   relay:
     exchange: payment.events
     poll-interval-ms: 1000
+
+billing:
+  # 정기 결제 주기 (D-25). 데모에서는 짧게 두고 확인한다.
+  period-days: ${BILLING_PERIOD_DAYS:30}
+  scheduler:
+    enabled: ${BILLING_SCHEDULER_ENABLED:true}
+    interval-ms: ${BILLING_SCHEDULER_INTERVAL_MS:60000}
