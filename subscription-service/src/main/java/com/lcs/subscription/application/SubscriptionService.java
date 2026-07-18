@@ -18,15 +18,23 @@ public class SubscriptionService {
 
     private final SubscriptionRepository subscriptionRepository;
     private final OutboxWriter outboxWriter;
+    private final MemberVerifier memberVerifier;
 
-    public SubscriptionService(SubscriptionRepository subscriptionRepository, OutboxWriter outboxWriter) {
+    public SubscriptionService(SubscriptionRepository subscriptionRepository,
+                               OutboxWriter outboxWriter,
+                               MemberVerifier memberVerifier) {
         this.subscriptionRepository = subscriptionRepository;
         this.outboxWriter = outboxWriter;
+        this.memberVerifier = memberVerifier;
     }
 
     /** 사가 시작점. PENDING 구독 + SubscriptionCreated 이벤트를 한 트랜잭션으로 커밋한다. */
     @Transactional
     public Subscription subscribe(Long memberId, SubscriptionPlan plan) {
+        // 회원 활성 여부를 gRPC로 확인한다(D-17). 확인 불가 시 fail-closed —
+        // 트랜잭션이 시작되기 전에 거부해야 유령 구독이 생기지 않는다.
+        memberVerifier.verifyActive(memberId);
+
         Subscription subscription = subscriptionRepository.save(Subscription.request(memberId, plan));
         // 결제에 필요한 데이터를 전부 싣는다(event-carried state transfer, D-17).
         // payment가 구독을 되묻는 동기 호출을 만들지 않기 위함이다.

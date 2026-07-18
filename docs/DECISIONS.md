@@ -20,6 +20,8 @@
 | D-14 | 2026-07-18 | compose를 용도별 분리: `infra` / `data` / `ci` / 전체 | 25개 컨테이너 동시 기동은 12~16GB RAM 필요 → 개발 시 필요한 조합만 기동 | 단일 compose 전체 기동 |
 | D-15 | 2026-07-18 | 트레이싱 = Zipkin 유지, Alloy에서 OTLP→Zipkin 변환 | 기존 compose에 이미 구성됨. Zipkin은 OTLP 네이티브 수신 불가하므로 Alloy가 변환 | Tempo — Grafana 스택과 더 자연스럽지만 교체 비용 |
 | D-16 | 2026-07-18 | 구독 해지 시 환불 포함: 해지 → `SubscriptionCancelled` → payment가 소비해 환불(REFUNDED) → `PaymentRefunded` 발행 | 해지와 환불이 항상 짝이므로 사가에 포함. 보상 실패는 재시도(멱등) → DLQ → 운영자 개입 | 환불을 수동 운영 처리로 분리 |
+| D-18 | 2026-07-18 | 회원 확인 실패 시 **fail-closed** (503 반환, 구독 생성 거부) | 확인 없이 통과시키면 없는/탈퇴 회원의 구독이 생기고 뒤이어 결제까지 진행돼 되돌리기 어렵다. 결제가 걸린 흐름은 가용성보다 정합성 | fail-open(경고 로그 후 통과) |
+| D-19 | 2026-07-18 | gRPC 주소는 Consul 메타데이터(`grpc-port`)로 전파, 채널은 대상별 재사용 | HTTP 포트와 gRPC 포트가 다르므로 디스커버리만으로는 부족. 로드밸런싱이 필요해지면 gRPC name resolver로 교체 | 정적 호스트 설정 / gRPC name resolver 즉시 도입 |
 | D-17 | 2026-07-18 | 서킷브레이커 = subscription → member gRPC 하나로 시작 | payment → subscription 동기 호출은 만들지 않는다 — `SubscriptionCreated` 이벤트에 필요한 데이터(plan·amount·memberId)를 전부 실어 보내므로(event-carried state transfer) 되물을 일이 없음. 동기 호출을 추가하면 이벤트로 끊은 결합을 다시 묶는 셈 | payment→subscription 동기 조회 |
 
 ## 미결

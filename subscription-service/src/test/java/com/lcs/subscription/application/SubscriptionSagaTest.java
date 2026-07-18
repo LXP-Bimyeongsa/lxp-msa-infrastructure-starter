@@ -9,9 +9,11 @@ import com.lcs.subscription.infrastructure.outbox.OutboxMessage;
 import com.lcs.subscription.infrastructure.outbox.OutboxRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -22,6 +24,11 @@ class SubscriptionSagaTest {
 
     @Autowired
     private OutboxRepository outboxRepository;
+
+    // 이 테스트는 사가 상태 전이를 검증한다. 회원 확인은 통과했다고 가정하고,
+    // 확인 실패 경로는 MemberVerifierTest에서 따로 다룬다.
+    @MockitoBean
+    private MemberVerifier memberVerifier;
 
     @Test
     @DisplayName("구독 생성 시 PENDING 상태와 SubscriptionCreated outbox가 한 트랜잭션으로 기록된다")
