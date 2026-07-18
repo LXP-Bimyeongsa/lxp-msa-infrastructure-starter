@@ -1,3 +1,10 @@
+# 전체 스택 = 인프라 + 데이터/메시징 + 모든 서비스
+#
+# 데이터 계층은 compose.data.yaml에 정의돼 있고 여기서 include한다.
+# 중복 정의하면 두 파일이 조용히 어긋난다.
+include:
+  - compose.data.yaml
+
 services:
 
   consul-1:
@@ -158,6 +165,12 @@ services:
       LOG_DIR: /logs
       CONFIG_SERVER_URL: http://config-server:8888
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      # 컨테이너끼리는 항상 내부 포트 3306으로 통신한다.
+      # 호스트 포트(MYSQL_PORT)와는 무관하다.
+      MYSQL_HOST: mysql
+      MYSQL_DB_PORT: 3306
+      MYSQL_USER: member
+      MYSQL_PASSWORD: member
     ports:
       - "8082:8082"
     volumes:
@@ -166,6 +179,8 @@ services:
       consul-1:
         condition: service_healthy
       config-server:
+        condition: service_healthy
+      mysql:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:

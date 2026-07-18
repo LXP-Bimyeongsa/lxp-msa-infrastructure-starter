@@ -1,0 +1,27 @@
+# 테스트는 H2 인메모리로 돌린다.
+# DB 컨테이너나 Consul/config-server 없이 CI에서 실행되어야 한다.
+spring:
+  config:
+    import: "optional:configserver:"
+  cloud:
+    consul:
+      enabled: false
+      discovery:
+        enabled: false
+  datasource:
+    url: jdbc:h2:mem:member_db;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      # 운영은 init SQL이 스키마를 소유하지만(validate), 테스트에서는
+      # H2를 쓰므로 엔티티로부터 생성한다.
+      ddl-auto: create-drop
+    open-in-view: false
+
+management:
+  zipkin:
+    tracing:
+      export:
+        enabled: false

@@ -1,2 +1,16 @@
 server:
   port: 8082
+
+spring:
+  datasource:
+    # 서비스 전용 계정. member_db 외의 스키마에는 권한이 없다. (docs/DECISIONS.md D-09)
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_DB_PORT:3306}/member_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${MYSQL_USER:member}
+    password: ${MYSQL_PASSWORD:member}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      # 스키마는 infrastructure/mysql/init 의 SQL이 소유한다.
+      # 애플리케이션이 DDL을 만들면 실제 스키마와 코드가 조용히 어긋난다.
+      ddl-auto: validate
+    open-in-view: false

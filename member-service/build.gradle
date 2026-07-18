@@ -24,12 +24,20 @@ ext {
 dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    // 비밀번호 해싱만 필요하다. spring-boot-starter-security를 쓰면
+    // 전 엔드포인트에 인증 필터가 자동 적용돼 기존 API가 막힌다.
+    implementation 'org.springframework.security:spring-security-crypto'
     implementation 'org.springframework.cloud:spring-cloud-starter-config'
     implementation 'org.springframework.cloud:spring-cloud-starter-consul-discovery'
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
+    runtimeOnly 'com.mysql:mysql-connector-j'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // 테스트는 H2 인메모리로 돌린다. DB 컨테이너 없이 CI에서 실행되어야 하기 때문.
+    testRuntimeOnly 'com.h2database:h2'
 }
 
 dependencyManagement {
