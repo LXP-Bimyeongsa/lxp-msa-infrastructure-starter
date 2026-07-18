@@ -1,0 +1,40 @@
+# CI — Jenkins
+#
+#   docker compose -f compose.ci.yaml up -d
+#   초기 비밀번호: docker compose -f compose.ci.yaml exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
+#
+# 호스트 포트는 9080. Jenkins 기본값 8080은 gateway와 충돌한다.
+#
+# 파이프라인이 docker build를 하므로 호스트의 Docker 소켓을 마운트한다(DooD).
+# 컨테이너가 호스트 Docker를 그대로 조종할 수 있다는 뜻이라, 로컬 학습 환경에서만 쓴다.
+
+services:
+
+  jenkins:
+    image: jenkins/jenkins:2.492-jdk17
+    container_name: lxp-jenkins
+    user: root                       # docker.sock 접근 및 docker CLI 설치를 위해
+    environment:
+      JAVA_OPTS: -Djenkins.install.runSetupWizard=true
+      TZ: Asia/Seoul
+    ports:
+      - "9080:8080"
+      - "50000:50000"                # 에이전트 접속용
+    volumes:
+      - jenkins-data:/var/jenkins_home
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+networks:
+  lxp-net:
+    name: lxp-net
+    driver: bridge
+
+volumes:
+  jenkins-data:
