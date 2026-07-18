@@ -25,3 +25,10 @@ spring:
               uri: lb://payment-service
               predicates:
                 - Path=/api/payments/**
+
+# Keycloak 토큰 검증 (D-20)
+keycloak:
+  # 토큰의 iss와 반드시 같아야 한다. 클라이언트가 접속하는 외부 주소다. (P-09)
+  issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/lxp}
+  # JWKS는 gateway가 직접 가져오므로 내부에서 접근 가능한 주소여야 한다.
+  jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8180/realms/lxp/protocol/openid-connect/certs}

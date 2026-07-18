@@ -21,9 +21,10 @@ public class Member {
     @Column(nullable = false, unique = true, length = 320)
     private String email;
 
-    // 평문이 아니라 해시를 담는다. 필드명으로 그 사실이 드러나야 실수를 막는다.
-    @Column(name = "password_hash", nullable = false, length = 100)
-    private String passwordHash;
+    // 자격증명은 Keycloak이 소유한다 (D-20). 여기엔 연결 식별자만 둔다.
+    // 비밀번호를 두 곳에 두면 변경 시 반드시 어긋난다.
+    @Column(name = "keycloak_id", unique = true, length = 36)
+    private String keycloakId;
 
     @Column(nullable = false, length = 50)
     private String name;
@@ -39,16 +40,20 @@ public class Member {
         // JPA 전용
     }
 
-    private Member(String email, String passwordHash, String name) {
+    private Member(String email, String name) {
         this.email = email;
-        this.passwordHash = passwordHash;
         this.name = name;
         this.status = MemberStatus.ACTIVE;
         this.createdAt = Instant.now();
     }
 
-    public static Member register(String email, String passwordHash, String name) {
-        return new Member(email, passwordHash, name);
+    public static Member register(String email, String name) {
+        return new Member(email, name);
+    }
+
+    /** Keycloak 사용자 생성 후 연결한다. */
+    public void linkKeycloakUser(String keycloakId) {
+        this.keycloakId = keycloakId;
     }
 
     public void withdraw() {
@@ -67,8 +72,8 @@ public class Member {
         return email;
     }
 
-    public String getPasswordHash() {
-        return passwordHash;
+    public String getKeycloakId() {
+        return keycloakId;
     }
 
     public String getName() {

@@ -39,7 +39,10 @@ services:
       - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo-data:/data/db
-      - ./infrastructure/mongo/init:/docker-entrypoint-initdb.d:ro
+      # docker-entrypoint-initdb.d 로 rs.initiate를 실행하면 안 된다.
+      # 그 시점의 mongod는 네트워크가 아닌 로컬 소켓에만 붙어 있어서
+      # "mongo:27017"을 자기 자신으로 인식하지 못하고 NodeNotFound로 죽는다.
+      # ReplicaSet 초기화는 아래 mongo-init 잡이 기동 후에 수행한다.
     networks: [lxp-net]
     healthcheck:
       # RS가 초기화돼야 트랜잭션이 되므로 ping이 아니라 RS 상태를 본다.

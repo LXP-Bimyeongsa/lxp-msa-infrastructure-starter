@@ -29,13 +29,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    // 비밀번호 해싱만 필요하다. spring-boot-starter-security를 쓰면
-    // 전 엔드포인트에 인증 필터가 자동 적용돼 기존 API가 막힌다.
-    implementation 'org.springframework.security:spring-security-crypto'
-    // JWT 발급 (검증은 gateway 담당)
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
     // gRPC 서버 — 이 서비스가 계약을 제공한다 (D-12)
     implementation "io.grpc:grpc-stub:${grpcVersion}"
     implementation "io.grpc:grpc-protobuf:${grpcVersion}"
