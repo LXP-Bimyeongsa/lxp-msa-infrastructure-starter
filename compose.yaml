@@ -229,6 +229,12 @@ services:
       LOG_DIR: /logs
       CONFIG_SERVER_URL: http://config-server:8888
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MYSQL_HOST: mysql
+      MYSQL_DB_PORT: 3306
+      MYSQL_USER: subscription
+      MYSQL_PASSWORD: subscription
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
     ports:
       - "8084:8084"
     volumes:
@@ -237,6 +243,10 @@ services:
       consul-1:
         condition: service_healthy
       config-server:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:
@@ -257,6 +267,12 @@ services:
       LOG_DIR: /logs
       CONFIG_SERVER_URL: http://config-server:8888
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MYSQL_HOST: mysql
+      MYSQL_DB_PORT: 3306
+      MYSQL_USER: payment
+      MYSQL_PASSWORD: payment
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
     ports:
       - "8085:8085"
     volumes:
@@ -265,6 +281,10 @@ services:
       consul-1:
         condition: service_healthy
       config-server:
+        condition: service_healthy
+      mysql:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:

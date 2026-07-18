@@ -19,6 +19,8 @@
 | D-13 | 2026-07-18 | 사가 = 코레오그래피 (RabbitMQ 이벤트) | 구조도 기준. 서비스 2개 수준에서는 오케스트레이터가 과함 | 오케스트레이션 |
 | D-14 | 2026-07-18 | compose를 용도별 분리: `infra` / `data` / `ci` / 전체 | 25개 컨테이너 동시 기동은 12~16GB RAM 필요 → 개발 시 필요한 조합만 기동 | 단일 compose 전체 기동 |
 | D-15 | 2026-07-18 | 트레이싱 = Zipkin 유지, Alloy에서 OTLP→Zipkin 변환 | 기존 compose에 이미 구성됨. Zipkin은 OTLP 네이티브 수신 불가하므로 Alloy가 변환 | Tempo — Grafana 스택과 더 자연스럽지만 교체 비용 |
+| D-16 | 2026-07-18 | 구독 해지 시 환불 포함: 해지 → `SubscriptionCancelled` → payment가 소비해 환불(REFUNDED) → `PaymentRefunded` 발행 | 해지와 환불이 항상 짝이므로 사가에 포함. 보상 실패는 재시도(멱등) → DLQ → 운영자 개입 | 환불을 수동 운영 처리로 분리 |
+| D-17 | 2026-07-18 | 서킷브레이커 = subscription → member gRPC 하나로 시작 | payment → subscription 동기 호출은 만들지 않는다 — `SubscriptionCreated` 이벤트에 필요한 데이터(plan·amount·memberId)를 전부 실어 보내므로(event-carried state transfer) 되물을 일이 없음. 동기 호출을 추가하면 이벤트로 끊은 결합을 다시 묶는 셈 | payment→subscription 동기 조회 |
 
 ## 미결
 
@@ -27,3 +29,5 @@
 | P-01 | PG사 연동 (실키는 사업자등록 필요) | 테스트 모드/Mock으로 시작, 실연동 시점 미정 |
 | P-02 | Consul 개발 모드 노드 수 (현재 3노드 `bootstrap-expect=3`) | D-14에 맞춰 1노드 개발 모드 전환 검토 |
 | P-03 | Chaos Monkey 적용 시점 | 사가·서킷브레이커 구현 완료 후 |
+| ~~P-04~~ | 회원탈퇴 사가 범위 | **부분 확정(D-16)**: 해지 시 환불 포함. member.events 큐 정의는 회원탈퇴 사가 구현 시 |
+| ~~P-05~~ | 서킷브레이커 대상 | **확정(D-17)**: subscription → member gRPC 하나 |
