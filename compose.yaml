@@ -171,8 +171,10 @@ services:
       MYSQL_DB_PORT: 3306
       MYSQL_USER: member
       MYSQL_PASSWORD: member
+      GRPC_SERVER_PORT: 9092
     ports:
       - "8082:8082"
+      - "9092:9092"   # gRPC (subscription-service가 호출)
     volumes:
       - ./infrastructure/logs:/logs
     depends_on:

@@ -14,3 +14,14 @@ spring:
       # 애플리케이션이 DDL을 만들면 실제 스키마와 코드가 조용히 어긋난다.
       ddl-auto: validate
     open-in-view: false
+  cloud:
+    consul:
+      discovery:
+        # 호출 측(subscription-service)이 gRPC 포트를 찾는 경로.
+        # HTTP 포트와 다르므로 메타데이터로 알려야 한다.
+        metadata:
+          grpc-port: "${GRPC_SERVER_PORT:9092}"
+
+grpc:
+  server:
+    port: ${GRPC_SERVER_PORT:9092}
