@@ -43,11 +43,14 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
     private final ReactiveJwtDecoder jwtDecoder;
     private final ServiceTokenProvider serviceTokenProvider;
+    private final TokenIntrospector introspector;
 
     public JwtAuthenticationFilter(ReactiveJwtDecoder jwtDecoder,
-                                   ServiceTokenProvider serviceTokenProvider) {
+                                   ServiceTokenProvider serviceTokenProvider,
+                                   TokenIntrospector introspector) {
         this.jwtDecoder = jwtDecoder;
         this.serviceTokenProvider = serviceTokenProvider;
+        this.introspector = introspector;
     }
 
     @Override
@@ -65,15 +68,28 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return unauthorized(exchange, "인증 토큰이 없습니다.");
         }
 
+        String token = authorization.substring(7);
+
         // 검증 결과를 Optional로 감싸 값을 실어 나른다.
         // Mono<Void>는 값 없이 완료되므로 switchIfEmpty로 실패를 구분하려 하면
         // 정상 응답까지 실패로 잡힌다.
-        return jwtDecoder.decode(authorization.substring(7))
+        return jwtDecoder.decode(token)
                 .map(jwt -> Optional.ofNullable(jwt.getClaimAsString(MEMBER_ID_CLAIM)))
                 // 서명 불일치·만료·형식 오류를 구분하지 않는다. 알려주면 공격자에게 힌트가 된다.
                 .onErrorReturn(Optional.empty())
                 .flatMap(memberId -> memberId
-                        .map(id -> forward(exchange, chain, withMemberId(request, id)))
+                        // 서명이 맞아도 그 사이 탈퇴했을 수 있다 — Keycloak에 지금 상태를 묻는다(D-35).
+                        .map(id -> introspector.isActive(token)
+                                .flatMap(active -> active
+                                        ? forward(exchange, chain, withMemberId(request, id))
+                                        : unauthorized(exchange, "더 이상 유효하지 않은 토큰입니다."))
+                                // "죽었다"(401)와 "모르겠다"(503)를 구분한다.
+                                // 섞으면 Keycloak 장애가 "당신 토큰이 잘못됐다"로 보여
+                                // 사용자가 재로그인을 시도하고 그것마저 실패한다.
+                                .onErrorResume(IntrospectionUnavailableException.class, e -> {
+                                    log.error("introspection 실패 — 요청을 거부한다: {}", e.getMessage());
+                                    return serviceUnavailable(exchange);
+                                }))
                         // 토큰은 유효하나 member_id 속성이 없는 계정 = 가입 절차 미완.
                         // 메시지는 나뉘지만 둘 다 401이라 존재 여부는 새지 않는다.
                         .orElseGet(() -> unauthorized(exchange, "유효하지 않거나 가입이 완료되지 않은 계정입니다.")));

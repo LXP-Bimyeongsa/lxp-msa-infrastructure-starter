@@ -145,6 +145,10 @@ services:
       KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/token
       KEYCLOAK_GATEWAY_CLIENT_ID: lxp-gateway
       KEYCLOAK_GATEWAY_CLIENT_SECRET: ${KEYCLOAK_GATEWAY_CLIENT_SECRET:-lxp-gateway-secret}
+      # 탈퇴 회원의 잔여 토큰 차단 (D-35). 조회도 컨테이너 안에서 하므로 내부 주소다.
+      KEYCLOAK_INTROSPECTION_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/token/introspect
+      KEYCLOAK_INTROSPECTION_ENABLED: ${KEYCLOAK_INTROSPECTION_ENABLED:-true}
+      KEYCLOAK_INTROSPECTION_CACHE_TTL: ${KEYCLOAK_INTROSPECTION_CACHE_TTL:-30}
     ports:
       - "8080:8080"
     volumes:

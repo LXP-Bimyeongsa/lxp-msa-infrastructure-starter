@@ -7,8 +7,8 @@
 | 저장소 | [LXP-Bimyeongsa/lxp-msa-infrastructure-starter](https://github.com/LXP-Bimyeongsa/lxp-msa-infrastructure-starter) |
 | 서비스 | 6개 (gateway, config-server, member, course, subscription, payment) |
 | 컨테이너 | 21개 (서비스 6 + 인프라 15) |
-| 기록된 설계 결정 | 34건 (D-01 ~ D-34) |
-| 미결 항목 | 18건 (P-01 ~ P-18, 이 중 7건 해결) |
+| 기록된 설계 결정 | 35건 (D-01 ~ D-35) |
+| 미결 항목 | 18건 (P-01 ~ P-18, 이 중 8건 해결) |
 | 기술 스택 | Java 17 · Spring Boot 3.5 · Spring Cloud 2025.0 |
 
 ---
@@ -269,7 +269,6 @@ Realm 'lxp' already exists. Import skipped
 
 | 항목 | 내용 |
 |---|---|
-| 탈퇴 회원의 잔여 토큰 | 계정을 비활성화해도 이미 발행된 access token은 만료(300초)까지 유효. 막으려면 매 요청 상태 확인이 필요 |
 | 재생 URL 접근 제어 | 로그인만 하면 누구나 재생 URL 획득. 구독 확인을 넣으면 동기 호출이 늘어남 |
 | PG 실연동 | 현재 mock (금액 > 0이면 승인). 실키는 사업자등록 필요 |
 | 정기 결제 재시도 | 현재 1회 실패 시 즉시 중단. 실무의 dunning 정책 필요 여부 미정 |
