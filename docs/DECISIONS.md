@@ -22,6 +22,11 @@
 | D-16 | 2026-07-18 | 구독 해지 시 환불 포함: 해지 → `SubscriptionCancelled` → payment가 소비해 환불(REFUNDED) → `PaymentRefunded` 발행 | 해지와 환불이 항상 짝이므로 사가에 포함. 보상 실패는 재시도(멱등) → DLQ → 운영자 개입 | 환불을 수동 운영 처리로 분리 |
 | D-18 | 2026-07-18 | 회원 확인 실패 시 **fail-closed** (503 반환, 구독 생성 거부) | 확인 없이 통과시키면 없는/탈퇴 회원의 구독이 생기고 뒤이어 결제까지 진행돼 되돌리기 어렵다. 결제가 걸린 흐름은 가용성보다 정합성 | fail-open(경고 로그 후 통과) |
 | D-19 | 2026-07-18 | gRPC 주소는 Consul 메타데이터(`grpc-port`)로 전파, 채널은 대상별 재사용 | HTTP 포트와 gRPC 포트가 다르므로 디스커버리만으로는 부족. 로드밸런싱이 필요해지면 gRPC name resolver로 교체 | 정적 호스트 설정 / gRPC name resolver 즉시 도입 |
+| D-20 | 2026-07-18 | **인증을 Keycloak(OIDC)으로 이관.** 발급·자격증명 = Keycloak, 도메인 프로필 = member-service(`sub`로 연결) | 비밀번호 재설정·MFA·소셜 로그인을 직접 구현하지 않는다. MSA에서 IdP를 분리하는 표준 구성을 학습 | 자체 JWT 발급 유지(D-04) — 대체됨 |
+| D-21 | 2026-07-18 | D-04의 JWT 발급 코드는 **머지 후 Keycloak PR에서 교체**. `X-Member-Id` 헤더 규약은 유지 | #16·#17이 이 헤더에 의존하므로 지금 제거하면 사가·gRPC가 깨진다. 검증 지점이 gateway 한 곳이라 내부 구현만 갈아끼우면 된다 | #15를 닫고 재작성 — 스택이 깨져 기각 |
+| D-22 | 2026-07-18 | **OpenTelemetry·Tempo 도입하지 않음.** Zipkin + Prometheus + Loki + Alloy 유지 | Tempo는 Zipkin의 대체재지 추가 기능이 아니다. 6개 서비스의 tracing 의존성을 교체할 만한 이득이 없다. traceId 로그 상관관계는 이미 동작 | OTel + Tempo 전환 |
+| D-23 | 2026-07-18 | **External Secrets 도입하지 않음.** `.env` + gitignore 유지 | 쿠버네티스 전용 오퍼레이터라 Docker Compose에서는 설치 자체가 불가능. K8s 전환은 별도 결정 사항 | K8s 전환 후 도입 / Vault + Spring Cloud Vault |
+| D-24 | 2026-07-18 | **ELB는 다이어그램에 "운영 구성"으로 표기만.** 로컬 스택에는 두지 않음 | 붙일 배포 대상(EC2/EKS)이 아직 없고, 실제 도입은 EC2 배포 파이프라인 구축(약 3일)과 월 $140 과금을 수반 | 실제 ALB 프로비저닝 / 로컬 nginx로 대체 |
 | D-17 | 2026-07-18 | 서킷브레이커 = subscription → member gRPC 하나로 시작 | payment → subscription 동기 호출은 만들지 않는다 — `SubscriptionCreated` 이벤트에 필요한 데이터(plan·amount·memberId)를 전부 실어 보내므로(event-carried state transfer) 되물을 일이 없음. 동기 호출을 추가하면 이벤트로 끊은 결합을 다시 묶는 셈 | payment→subscription 동기 조회 |
 
 ## 미결
@@ -34,3 +39,7 @@
 | ~~P-04~~ | 회원탈퇴 사가 범위 | **부분 확정(D-16)**: 해지 시 환불 포함. member.events 큐 정의는 회원탈퇴 사가 구현 시 |
 | ~~P-05~~ | 서킷브레이커 대상 | **확정(D-17)**: subscription → member gRPC 하나 |
 | P-06 | Config Server 백엔드 | 현재 config-repo 디렉터리 native. 다이어그램은 git 소스로 표기 — git 백엔드 전환 여부 |
+| P-07 | 배포 대상 (EC2 / EKS / 로컬) | 미정. ELB 실제 도입(D-24)의 전제. EC2+compose 약 3일, EKS 1~2주 |
+| P-08 | ELB 도입 시 필수 대응 | 헬스체크 경로를 `/actuator/health`로 지정(기본 `/`는 404라 정상 인스턴스를 죽은 것으로 판단), gateway에 `forward-headers-strategy: framework`(미설정 시 클라이언트 IP가 전부 ELB IP로 기록됨) |
+| P-09 | Keycloak issuer URL 통일 | 토큰의 `iss`는 클라이언트 접속 주소 기준인데 gateway는 내부 주소로 검증하려 든다. `KC_HOSTNAME`과 gateway `issuer-uri`를 외부 주소 하나로 맞추지 않으면 401만 반복된다 |
+| P-10 | Keycloak ↔ member_db 가입 정합성 | Keycloak 사용자 생성과 member_db 프로필 생성은 두 시스템에 걸친 쓰기다. 한쪽만 성공하는 경우의 보상 처리 필요 |
