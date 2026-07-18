@@ -309,6 +309,10 @@ services:
       # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      # member gRPC 호출에 붙일 서비스 토큰 발급 (D-34)
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/token
+      INTERNAL_CLIENT_ID: subscription-service
+      INTERNAL_CLIENT_SECRET: ${KEYCLOAK_SUBSCRIPTION_CLIENT_SECRET:-subscription-service-secret}
     ports:
       - "8084:8084"
     volumes:
@@ -321,6 +325,9 @@ services:
       mysql:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      # 첫 구독 요청 전에 서비스 토큰을 받을 수 있어야 한다 (D-34)
+      keycloak:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 
+import com.lcs.subscription.infrastructure.grpc.MemberCallRejectedException;
 import com.lcs.subscription.infrastructure.grpc.MemberClient;
 import com.lcs.subscription.infrastructure.grpc.MemberNotFoundOnRemoteException;
 import com.lcs.subscription.infrastructure.grpc.MemberServiceUnavailableException;
@@ -94,6 +95,36 @@ class MemberVerifierTest {
 
         CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("member-service");
         assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.OPEN);
+    }
+
+    @Test
+    @DisplayName("자격증명 거절도 fail-closed — 회원을 확인 못 했으면 구독을 만들지 않는다(D-34)")
+    void failsClosedOnCredentialRejection() {
+        willThrow(new MemberCallRejectedException("토큰 거절", null))
+                .given(memberClient).isActiveMember(6L);
+
+        assertThatThrownBy(() -> memberVerifier.verifyActive(6L))
+                .isInstanceOf(MemberVerificationUnavailableException.class);
+    }
+
+    @Test
+    @DisplayName("자격증명 거절은 서킷 집계에서 제외된다 — 상대는 멀쩡한데 서킷을 열면 안 된다(D-34)")
+    void credentialRejectionDoesNotOpenCircuit() {
+        // 시크릿 설정이 틀린 상황. member-service는 정상 동작하며 거절만 하고 있다.
+        // 이걸 장애로 세면 멀쩡한 서비스의 서킷이 열리고 진짜 원인이 묻힌다.
+        willThrow(new MemberCallRejectedException("토큰 거절", null))
+                .given(memberClient).isActiveMember(anyLong());
+
+        for (int i = 0; i < 10; i++) {
+            try {
+                memberVerifier.verifyActive(7L);
+            } catch (MemberVerificationUnavailableException ignored) {
+                // fail-closed는 유지된다 — 집계에서만 빠진다
+            }
+        }
+
+        CircuitBreaker circuitBreaker = circuitBreakerRegistry.circuitBreaker("member-service");
+        assertThat(circuitBreaker.getState()).isEqualTo(CircuitBreaker.State.CLOSED);
     }
 
     @Test

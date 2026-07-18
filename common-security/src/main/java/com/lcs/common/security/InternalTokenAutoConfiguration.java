@@ -3,6 +3,8 @@ package com.lcs.common.security;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.web.client.RestTemplateBuilder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.Customizer;
@@ -48,6 +50,22 @@ public class InternalTokenAutoConfiguration {
                 JwtValidators.createDefaultWithIssuer(issuerUri),
                 new InternalAudienceValidator(audience)));
         return decoder;
+    }
+
+    /**
+     * 다른 서비스를 호출하는 서비스만 필요하다 (D-34).
+     * {@code internal-auth.client.client-id}가 설정된 경우에만 만든다 —
+     * 호출하지 않는 서비스에까지 client secret을 쥐여줄 이유가 없다.
+     */
+    @Bean
+    @ConditionalOnMissingBean
+    @ConditionalOnProperty(name = "internal-auth.client.client-id")
+    public ServiceAccountTokenClient serviceAccountTokenClient(
+            RestTemplateBuilder builder,
+            @Value("${internal-auth.client.token-uri}") String tokenUri,
+            @Value("${internal-auth.client.client-id}") String clientId,
+            @Value("${internal-auth.client.client-secret}") String clientSecret) {
+        return new ServiceAccountTokenClient(builder.build(), tokenUri, clientId, clientSecret);
     }
 
     @Bean

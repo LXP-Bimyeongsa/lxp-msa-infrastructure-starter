@@ -30,6 +30,14 @@ outbox:
     exchange: subscription.events
     poll-interval-ms: 1000
 
+# member gRPC 호출에 붙일 서비스 토큰 (D-34).
+# 발급도 컨테이너 안에서 하므로 내부 주소다 (P-09).
+internal-auth:
+  client:
+    token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8180/realms/lxp/protocol/openid-connect/token}
+    client-id: ${INTERNAL_CLIENT_ID:subscription-service}
+    client-secret: ${INTERNAL_CLIENT_SECRET:subscription-service-secret}
+
 grpc:
   client:
     member-service:
