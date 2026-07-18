@@ -68,7 +68,15 @@ public class SubscriptionService {
     public void onPaymentCompleted(Long subscriptionId) {
         Subscription subscription = subscriptionRepository.findById(subscriptionId)
                 .orElseThrow(() -> new SubscriptionNotFoundException(subscriptionId));
-        if (!subscription.activate()) {
+        if (subscription.activate()) {
+            // 구독이 실제로 살아난 시점을 알린다 (D-36).
+            // SubscriptionCreated는 PENDING 시점이라 "이용 가능"을 뜻하지 않는다 —
+            // course가 재생 권한을 판단하려면 활성화 자체가 이벤트여야 한다.
+            outboxWriter.write(AGGREGATE, String.valueOf(subscription.getId()), "SubscriptionActivated", Map.of(
+                    "subscriptionId", subscription.getId(),
+                    "memberId", subscription.getMemberId()
+            ));
+        } else {
             // 결제 완료 전에 해지된 경우 등. 이미 CANCELLED면 활성화하지 않는다 —
             // 해지 시점에 SubscriptionCancelled가 이미 발행돼 환불 경로가 돈다.
             log.warn("활성화 무시(상태={}): subscriptionId={}", subscription.getStatus(), subscriptionId);

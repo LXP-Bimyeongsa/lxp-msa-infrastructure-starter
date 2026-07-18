@@ -29,13 +29,18 @@ class CourseServiceTest {
     @Mock
     private VideoStorage videoStorage;
 
+    // 재생 권한 판단만 빌려온다. 이벤트 → 읽기 모델 갱신 경로는 E2E에서 확인한다 (D-36).
+    @Mock
+    private EntitlementService entitlementService;
+
     private CourseService courseService;
     private Map<String, Course> store;
 
     @BeforeEach
     void setUp() {
         store = new HashMap<>();
-        courseService = new CourseService(new InMemoryCourseRepository(store), videoStorage);
+        courseService = new CourseService(
+                new InMemoryCourseRepository(store), videoStorage, entitlementService);
     }
 
     @Test
@@ -96,8 +101,54 @@ class CourseServiceTest {
     void noPlaybackUrlBeforeUpload() {
         Course course = courseService.create(1L, "제목", "설명");
 
-        assertThatThrownBy(() -> courseService.issuePlaybackUrl(course.getId()))
+        assertThatThrownBy(() -> courseService.issuePlaybackUrl(course.getId(), 1L))
                 .isInstanceOf(VideoNotUploadedException.class);
+    }
+
+    @Test
+    @DisplayName("활성 구독이 없으면 재생 URL을 주지 않는다 (D-36)")
+    void noPlaybackUrlWithoutSubscription() {
+        Course course = givenUploadedCourse("courses/x/paid.mp4");
+        long viewer = 42L;   // 강의 소유자가 아니고 구독도 없다
+
+        assertThatThrownBy(() -> courseService.issuePlaybackUrl(course.getId(), viewer))
+                .isInstanceOf(NoActiveSubscriptionException.class);
+    }
+
+    @Test
+    @DisplayName("활성 구독이 있으면 재생 URL을 받는다 (D-36)")
+    void playbackUrlWithSubscription() {
+        Course course = givenUploadedCourse("courses/x/paid2.mp4");
+        givenPlaybackUrlAvailable("courses/x/paid2.mp4");
+        long viewer = 43L;
+        given(entitlementService.canPlay(viewer)).willReturn(true);
+
+        assertThat(courseService.issuePlaybackUrl(course.getId(), viewer)).isNotNull();
+    }
+
+    @Test
+    @DisplayName("강의 소유자는 구독을 확인하지도 않는다 (D-36)")
+    void ownerCanPlayWithoutSubscription() {
+        Course course = givenUploadedCourse("courses/x/mine.mp4");
+        givenPlaybackUrlAvailable("courses/x/mine.mp4");
+
+        // givenUploadedCourse가 instructorId=1L로 만든다.
+        // entitlementService를 스텁하지 않았는데도 통과한다 = 아예 묻지 않는다.
+        assertThat(courseService.issuePlaybackUrl(course.getId(), 1L)).isNotNull();
+    }
+
+    // 재생 URL 스텁은 여기 두지 않는다 — 거부 경로 테스트에서는 거기까지 가지 않아
+    // UnnecessaryStubbingException이 난다. 성공을 기대하는 테스트가 직접 스텁한다.
+    private Course givenUploadedCourse(String objectKey) {
+        Course course = givenCourseWithUploadUrl(objectKey);
+        given(videoStorage.objectExists(objectKey)).willReturn(true);
+        courseService.completeUpload(course.getId(), 1L);
+        return courseService.findById(course.getId());
+    }
+
+    private void givenPlaybackUrlAvailable(String objectKey) {
+        given(videoStorage.issuePlaybackUrl(objectKey))
+                .willReturn(new VideoStorage.PresignedUrl("http://minio/playback", 3600));
     }
 
     @Test

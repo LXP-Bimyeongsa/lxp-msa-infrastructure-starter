@@ -97,6 +97,16 @@
       }
     },
     {
+      "name": "course.subscription-status",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "lxp.dlx",
+        "x-dead-letter-routing-key": "course.subscription-status.dead"
+      }
+    },
+    {
       "name": "lxp.dead-letter",
       "vhost": "/",
       "durable": true,
@@ -141,6 +151,22 @@
       "source": "subscription.events",
       "vhost": "/",
       "destination": "payment.subscription-cancelled",
+      "destination_type": "queue",
+      "routing_key": "subscription.cancelled",
+      "arguments": {}
+    },
+    {
+      "source": "subscription.events",
+      "vhost": "/",
+      "destination": "course.subscription-status",
+      "destination_type": "queue",
+      "routing_key": "subscription.activated",
+      "arguments": {}
+    },
+    {
+      "source": "subscription.events",
+      "vhost": "/",
+      "destination": "course.subscription-status",
       "destination_type": "queue",
       "routing_key": "subscription.cancelled",
       "arguments": {}
