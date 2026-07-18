@@ -95,3 +95,45 @@
 - **Consul이 아직 3노드 구성**(`bootstrap-expect=3`)입니다. D-14에 맞춰 개발용 1노드로 줄일지 미정 (P-02)
 - `config-repo/payment-service.yml`이 포트 한 줄뿐 — 중앙 설정에 둘 이유가 있는지
 - Outbox 릴레이 코드가 서비스마다 복사될 예정 — 공통 라이브러리로 뺄지 미정
+
+## 2026-07-19
+
+### 한 일
+
+**Step 4 도메인 구현 완료** (회원탈퇴 사가 제외)
+
+| PR | 내용 |
+|---|---|
+| #18 | course-service 강의 CRUD + MinIO Presigned URL |
+| #19 | 정기 결제 스케줄러 |
+| — | Keycloak(OIDC) 이관 |
+
+### 실제로 터진 문제와 원인
+
+**MinIO presigned URL 503** — SDK가 서명 전에 버킷 리전을 조회하려고 endpoint로 네트워크 호출을 하는데, presign 클라이언트의 endpoint는 컨테이너 밖 주소라 서버가 접속할 수 없었다. `.region()` 명시로 조회 자체를 제거. 예외 핸들러가 원인을 삼키고 있어 로그가 비어 있었던 것도 함께 고침.
+
+**정기 결제 트랜잭션 오염** — 제약 위반을 트랜잭션 안에서 잡아 무시하면 rollback-only로 표시돼 커밋 시 `UnexpectedRollbackException`이 난다. 선검사 + 예외 전파로 교체.
+
+**Keycloak "Account is not fully set up"** — 24+ 기본 VERIFY_PROFILE 필수 액션. 프로필은 member_db가 소유하므로 비활성화.
+
+**member_id 클레임 누락** — Keycloak 24+는 선언되지 않은 사용자 속성을 조용히 버린다. declarative user profile에 속성 선언 필요.
+
+**MongoDB 컨테이너 종료** — `docker-entrypoint-initdb.d`에서 `rs.initiate`를 실행하면 그 시점 mongod가 로컬 소켓에만 붙어 있어 자기 자신을 인식하지 못하고 죽는다. 이전에는 우연히 통과했던 레이스. initdb 마운트 제거.
+
+**gRPC 테스트 포트 충돌** — 컨테이너가 9092를 점유한 상태에서 테스트가 같은 포트를 잡으려다 실패. 테스트는 임의 포트 사용.
+
+### 검증 상태
+
+전부 실제 기동으로 확인:
+- Keycloak 가입 → 토큰 발급 → `member_id` 클레임 → gateway 검증 → 200
+- 무토큰/변조 토큰/`X-Member-Id` 위장 → 전부 401
+- 구독 생성 시 gRPC 회원 확인 + 사가(ACTIVE/APPROVED) 정상
+- 정기 결제: 회차 진행, 중복 차단, 해지 시 중단 및 환불
+- MinIO: presigned URL 업로드·재생 왕복, 내용 일치
+
+### 남은 것
+
+- 회원탈퇴 사가 (outbox 3번째 복사 → 공통화 판단 필요)
+- 서비스 간 토큰 검증 (P-11)
+- 재생 URL 접근 제어 (P-16)
+- README 스모크 절차 갱신 — 인증이 Keycloak으로 바뀌어 기존 절차가 낡음

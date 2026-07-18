@@ -27,14 +27,17 @@
 
 ## Step 4 — 도메인 구현
 
-- [x] member-service: 회원 가입 + JWT 발급 / Gateway JWT 검증
+- [x] member-service 회원 영속성 + 가입 API
 - [x] subscription-service ↔ payment-service 사가 (Outbox → RabbitMQ 코레오그래피)
 - [x] payment-service 멱등키 처리
 - [x] gRPC 계약 정의 + Resilience4J 서킷브레이커 (subscription → member, D-17)
-- [ ] **Keycloak 이관** (D-20): 자체 JWT 발급 제거, gateway를 JWKS 검증으로 교체, `password_hash` 삭제
-- [ ] course-service: 강의 메타 CRUD + MinIO Presigned URL 발급 (D-07)
+- [x] course-service: 강의 메타 CRUD + MinIO Presigned URL 발급 (D-07)
+- [x] 정기 결제 스케줄러 (D-25~D-27)
+- [x] **Keycloak 이관** (D-20): 자체 JWT 발급 제거, gateway JWKS 검증, `password_hash` 삭제
 - [ ] 회원탈퇴 사가: member-service → subscription-service 구독해지 (D-16 환불 포함)
-- [ ] README 스모크 절차 갱신 (인증 필수 반영)
+- [ ] 서비스 간 호출 시 서비스 토큰 검증 (P-11) — Keycloak client credentials
+- [ ] 재생 URL 구독 여부 확인 (course → subscription, D-17 재검토 필요)
+- [ ] README 스모크 절차 갱신 (인증이 Keycloak으로 바뀜)
 
 ## Step 5 — 관측 · 검증
 
