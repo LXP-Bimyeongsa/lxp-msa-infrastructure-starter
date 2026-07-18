@@ -2,6 +2,7 @@
 
 | 문서 | 내용 |
 |---|---|
+| [PROJECT_REPORT.md](PROJECT_REPORT.md) | **발표·제출용 종합 보고서** — 아키텍처·구현·장애 사례·검증 결과 |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | 목표 아키텍처 · 흐름 유형 · 사가 · Outbox · 가용성 로드맵 |
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 폴더 구조 · 서비스 내부 구조 · 포트 맵 · compose 실행 조합 |
 | [CONVENTIONS.md](CONVENTIONS.md) | 브랜치/PR · 커밋 · 서비스 경계 규율 · Outbox/proto/이벤트 규칙 |
