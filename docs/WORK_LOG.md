@@ -35,18 +35,43 @@
 
 | 대상 | 상태 |
 |---|---|
-| payment-service `gradlew bootJar` | 통과 |
-| subscription-service `gradlew bootJar` | 통과 |
-| `compose.data.yaml` 문법 | 통과 |
-| infra + data 조합 문법 | 통과 |
-| `compose.ci.yaml` 문법 | 통과 |
-| `definitions.json` 파싱 | 통과 |
-| **컨테이너 실제 기동** | **미검증** |
-| **gateway 라우팅 동작** | **미검증** |
-| **Jenkins 파이프라인 실행** | **미검증** |
-| **Jenkinsfile Groovy 문법** | **미검증** (정적 검토만) |
+**빌드·문법**
 
-Docker 데몬이 기동되지 않은 상태여서 런타임 검증을 하지 못했습니다. 머지 전 각 PR의 "테스트 방법"을 직접 확인해야 합니다.
+| 대상 | 상태 |
+|---|---|
+| payment / subscription / member / gateway `bootJar` | 통과 |
+| compose 전체 문법 (`config`) | 통과 |
+| `definitions.json` 파싱 | 통과 |
+
+**런타임 — Docker 기동 후 실제 확인**
+
+| 대상 | 결과 |
+|---|---|
+| 컨테이너 13개 기동 | 전부 healthy |
+| MySQL 스키마 3개 · outbox 3개 생성 | 통과 |
+| **서비스 계정 격리** (`member` → `payment_db`) | `ERROR 1044` 로 차단 확인 |
+| **MongoDB 단일노드 RS 트랜잭션** | 동작 확인 (D-10 입증) |
+| MinIO `course-videos` 버킷 생성 | 통과 |
+| RabbitMQ exchange 3 · queue 3 · binding 6 | 통과 |
+| **사가 이벤트 라우팅** | `subscription.created` → payment 큐, `payment.completed` → subscription 큐 각 1건 확인 |
+| Consul 서비스 등록 6개 | auth-service 없음 확인 |
+| **Gateway 라우팅 5개** | 전부 200 |
+| `/api/auth/ping` 응답 주체 | `member-service` (D-04 입증) |
+| `/api/payments/**` 응답 주체 | payment-service (D-03 입증) |
+| 8081 (구 auth-service) | 연결 불가 (정상) |
+| Prometheus 스크레이프 타깃 6개 | 전부 `up` |
+
+**여전히 미검증**
+
+| 대상 | 상태 |
+|---|---|
+| Jenkins 기동 · 파이프라인 실행 | 미검증 |
+| Jenkinsfile Groovy 문법 | 미검증 (정적 검토만) |
+| Grafana 대시보드 · Loki 로그 수집 | 미확인 |
+
+### 기동 중 발견해 고친 것
+
+**3306 포트 충돌.** 호스트에 네이티브 MySQL이 이미 떠 있어 mysql 컨테이너가 뜨지 못했습니다. 호스트 포트를 환경변수로 분리하고(`MYSQL_PORT` 등, 기본값은 표준 포트 유지) `.env.example`을 추가했습니다. 컨테이너끼리는 항상 기본 포트로 통신하므로 서비스 설정에는 영향이 없습니다.
 
 ### 알려진 함정
 
@@ -58,8 +83,8 @@ Docker 데몬이 기동되지 않은 상태여서 런타임 검증을 하지 못
 
 ### 다음
 
-1. Docker Desktop 기동 후 각 PR "테스트 방법" 실행 → 머지
-2. **auth-service를 member-service로 흡수** (D-04) — 이번 프로젝트의 유일한 파괴적 작업, 실행 전 확인 필요
+1. PR 13개 머지 (문서 #1~#5 → 코드 #6 → #7 → #12 → 독립 #8~#11)
+2. Jenkins 기동 및 파이프라인 첫 실행 — 유일하게 남은 미검증 영역
 3. Step 4 도메인 구현: 인증 → 강의+MinIO → 사가 → gRPC
 4. `gh auth login` 완료 (터미널에 `✓ Logged in as` 확인까지)
 5. Docker Hub 가입 후 `docker login` — 이미지 12개 이상 pull하므로 rate limit 회피
