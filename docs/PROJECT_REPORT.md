@@ -7,8 +7,8 @@
 | 저장소 | [LXP-Bimyeongsa/lxp-msa-infrastructure-starter](https://github.com/LXP-Bimyeongsa/lxp-msa-infrastructure-starter) |
 | 서비스 | 6개 (gateway, config-server, member, course, subscription, payment) |
 | 컨테이너 | 21개 (서비스 6 + 인프라 15) |
-| 기록된 설계 결정 | 29건 (D-01 ~ D-29) |
-| 미결 항목 | 16건 (P-01 ~ P-16) |
+| 기록된 설계 결정 | 32건 (D-01 ~ D-32) |
+| 미결 항목 | 16건 (P-01 ~ P-16, 이 중 5건 해결) |
 | 기술 스택 | Java 17 · Spring Boot 3.5 · Spring Cloud 2025.0 |
 
 ---
@@ -104,7 +104,23 @@ flowchart LR
 - **"회원 없음"과 "서비스 장애"를 구분** — `NOT_FOUND`는 원격이 정상 동작한 결과이므로 서킷 집계에서 제외. 이걸 실패로 세면 잘못된 요청이 몰릴 때 멀쩡한 서비스의 서킷이 열립니다.
 - **fail-closed** — 확인 불가 시 503. 통과시키면 유령 구독이 생기고 사가가 결제까지 진행합니다.
 
-### 2-5. 동영상 저장 (MinIO)
+### 2-5. 회원탈퇴 사가 (D-30 ~ D-32)
+
+```
+탈퇴(WITHDRAWN) → MemberWithdrawn
+  → 살아 있는 구독 전부 해지(CANCELLED) → SubscriptionCancelled
+    → 환불(REFUNDED) + 예약 결제 취소
+```
+
+member가 subscription을 **동기 호출하지 않습니다.** 호출하면 탈퇴가 구독 서비스의 가용성에 묶여, 그쪽이 죽으면 탈퇴 자체가 불가능해집니다.
+
+ACTIVE만이 아니라 **PENDING 구독까지** 해지합니다. 탈퇴 직후 결제가 승인되면 주인 없는 ACTIVE 구독이 남기 때문입니다.
+
+이 시점에 Outbox 코드가 세 번째로 복사될 참이라, 먼저 **`common-outbox` 모듈로 추출**했습니다. 세 구현이 서로 달랐다면 판단이 달랐겠지만, 패키지 선언 한 줄 빼고 완전히 동일했습니다.
+
+탈퇴하면 **Keycloak 계정도 비활성화**합니다. 삭제하지 않는 이유는 `sub`이 사라지면 기존 결제·환불 기록의 주체를 추적할 수 없기 때문입니다.
+
+### 2-6. 동영상 저장 (MinIO)
 
 파일이 서비스 JVM을 통과하지 않습니다. course-service는 **서명된 URL만 발급**하고 클라이언트가 MinIO와 직접 주고받습니다.
 
@@ -165,7 +181,35 @@ Caused by: java.net.ConnectException: Failed to connect to localhost/[::1]:9000
 
 **주목할 점** 앞선 빌드가 통과한 건 그때 포트가 **우연히 비어 있었기 때문**입니다. 테스트가 환경에 의존하고 있었습니다.
 
-### ⑥ 3306 포트 충돌
+### ⑥ Keycloak realm import — 조용히 건너뜀
+
+**증상** `accessTokenLifespan`을 고치고 재기동했는데 값이 그대로
+
+**원인** `--import-realm`은 realm이 이미 있으면 건너뜁니다.
+
+```
+Realm 'lxp' already exists. Import skipped
+```
+
+**해결** `docker compose down -v`
+
+**주목할 점** MySQL init 스크립트와 **정확히 같은 함정**입니다. 상태를 볼륨에 담는 컨테이너는 전부 이 성질을 갖는데, 각각 처음 만날 때마다 새로 놀라게 됩니다.
+
+### ⑦ "막았다"고 생각한 것이 열려 있었음
+
+탈퇴 시 Keycloak 계정을 비활성화한 뒤, 정말 막혔는지 세 경로를 각각 확인했습니다.
+
+| 경로 | 결과 |
+|---|---|
+| 새 토큰 발급 | 차단 |
+| refresh_token 갱신 | 차단 |
+| **기존 access token으로 API 호출** | **HTTP 200 — 열려 있음** |
+
+`accessTokenLifespan`이 3600이라 탈퇴 후 **최대 1시간** API가 열려 있었습니다. 300초로 줄여 노출 창을 1/12로 좁혔습니다.
+
+"비활성화 API가 200을 반환했다"까지만 확인했으면 놓쳤을 구멍입니다.
+
+### ⑧ 3306 포트 충돌
 
 호스트에 네이티브 MySQL이 이미 떠 있어 컨테이너가 기동하지 못했습니다. 호스트 포트를 환경변수로 분리(기본값은 표준 포트 유지)하고 `.env.example`을 추가했습니다.
 
@@ -213,8 +257,7 @@ Caused by: java.net.ConnectException: Failed to connect to localhost/[::1]:9000
 
 | 항목 | 내용 |
 |---|---|
-| 회원탈퇴 사가 | member → subscription 구독 해지. Outbox 코드 3번째 복사 지점이라 공통화 판단 필요 |
-| 서비스 간 토큰 검증 | 현재 다운스트림이 `X-Member-Id`를 그대로 신뢰 — 네트워크 접근이 가능하면 Gateway 우회 가능 |
+| 서비스 간 토큰 검증 | 현재 다운스트림이 `X-Member-Id`를 그대로 신뢰 — 네트워크 접근이 가능하면 Gateway 우회 가능. 탈퇴 회원의 잔여 access token 문제(D-32)도 함께 |
 | 재생 URL 접근 제어 | 로그인만 하면 누구나 재생 URL 획득. 구독 확인을 넣으면 동기 호출이 늘어남 |
 | PG 실연동 | 현재 mock (금액 > 0이면 승인). 실키는 사업자등록 필요 |
 | 정기 결제 재시도 | 현재 1회 실패 시 즉시 중단. 실무의 dunning 정책 필요 여부 미정 |
@@ -230,6 +273,8 @@ Caused by: java.net.ConnectException: Failed to connect to localhost/[::1]:9000
 **우연히 통과하는 테스트가 가장 위험합니다.** gRPC 포트 충돌과 mongo 레이스는 둘 다 "이전에는 됐던" 것들이었습니다.
 
 **멱등성은 사가의 부가 기능이 아니라 전제입니다.** at-least-once를 택한 순간 모든 소비자가 멱등해야 하고, 그 보장은 애플리케이션 로직이 아니라 **DB 제약**에 두는 편이 안전합니다.
+
+**막았다고 생각한 것을 실제로 뚫어봐야 합니다.** 탈퇴 시 계정 비활성화 API가 200을 반환하는 것까지만 보고 넘어갔다면, 기존 토큰으로 1시간 동안 API가 열려 있다는 것을 몰랐을 겁니다. 차단은 "차단 코드를 호출했다"가 아니라 "우회 경로가 전부 막혔다"로 확인해야 합니다.
 
 **실패를 어떻게 다룰지가 설계입니다.** 서킷브레이커의 fail-closed, 사가의 보상 트랜잭션, DLQ 격리, 두 시스템에 걸친 쓰기의 보상 삭제 — 정상 경로보다 실패 경로를 정하는 데 시간이 더 들었습니다.
 

@@ -34,6 +34,10 @@
 
 ## Outbox 규칙
 
+- **구현은 `common-outbox` 모듈을 쓴다** (D-30). 서비스마다 복사하지 않는다.
+  - `settings.gradle`에 `includeBuild '../common-outbox'`, `build.gradle`에 `implementation 'com.lcs:common-outbox:0.0.1-SNAPSHOT'`
+  - 빈은 자동 등록된다. 발행하는 서비스는 `@EnableScheduling`과 `outbox.relay.exchange` 설정만 추가하면 된다.
+  - 이벤트를 소비만 하는 서비스는 `outbox.relay.enabled=false`로 릴레이를 끈다.
 - 테이블명 `outbox`, 서비스마다 자기 스키마에 소유.
 - 필수 컬럼: `id(UUID)`, `aggregate_type`, `aggregate_id`, `event_type`, `payload(JSON)`, `created_at`, `published_at(null=미발행)`
 - 릴레이는 `@Scheduled`로 `published_at IS NULL` 을 폴링, RabbitMQ publisher confirm 수신 후 마킹.

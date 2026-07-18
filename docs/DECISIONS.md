@@ -32,6 +32,9 @@
 | D-28 | 2026-07-19 | 내부 memberId를 Keycloak 사용자 속성 → `member_id` 클레임으로 전달 | Keycloak `sub`는 UUID인데 subscription/payment/course의 memberId는 Long이다. sub를 그대로 쓰면 3개 서비스의 컬럼 타입과 gRPC 계약까지 바꿔야 한다. 클레임으로 실어 보내면 파급이 gateway 한 곳에서 끝난다 | sub를 그대로 사용하고 전 서비스 타입 변경 |
 | D-29 | 2026-07-19 | MongoDB ReplicaSet 초기화는 `mongo-init` 잡에서만 수행 | `docker-entrypoint-initdb.d`의 mongod는 로컬 소켓에만 붙어 있어 `mongo:27017`을 자기 자신으로 인식하지 못하고 NodeNotFound로 종료된다. 실제로 컨테이너가 죽는 것을 확인 | initdb.d 스크립트 유지 |
 | D-27 | 2026-07-18 | 해지 시 예약된 다음 결제를 즉시 취소 | 해지했는데 스케줄이 남아 있으면 다음 주기에 청구된다. `SubscriptionCancelled` 소비 시 환불(D-16)과 함께 스케줄도 정리한다 | 스케줄 만료를 기다림 |
+| D-30 | 2026-07-19 | **Outbox 구현을 `common-outbox` 모듈로 추출**, 각 서비스는 Gradle 컴포지트 빌드(`includeBuild`)로 링크. 빈 등록은 `@AutoConfiguration` + `@AutoConfigurationPackage` | subscription·payment의 outbox 4개 파일이 패키지 선언 한 줄 빼고 완전히 동일했고, 회원탈퇴 사가(D-31)에서 member가 세 번째 복사본을 만들 참이었다. 컴포지트 빌드는 "서비스마다 독립 Gradle 빌드"를 유지한 채 공통 모듈만 끌어온다. `@EntityScan`/`@EnableJpaRepositories`가 아닌 `@AutoConfigurationPackage`를 쓰는 이유 — 앞의 둘은 Boot 기본 스캔 패키지를 **대체**해서 서비스 자신의 엔티티가 사라진다 | 루트 멀티프로젝트 통합 — Jenkins의 "변경된 서비스만 빌드"와 서비스별 Dockerfile이 깨짐 / 사내 Maven 저장소 publish — 저장소 인프라 없음, 수정마다 3단계 |
+| D-31 | 2026-07-19 | **회원탈퇴 사가 = 코레오그래피.** member가 `MemberWithdrawn` 발행 → subscription이 CANCELLED가 아닌 구독을 전부 해지 → 기존 D-16 환불 경로로 이어짐 | member가 subscription을 동기 호출하면 탈퇴가 subscription의 가용성에 묶여, 구독 서비스가 죽으면 탈퇴 자체가 불가능해진다. 탈퇴는 즉시성이 필요 없으므로 결과적 일관성으로 충분하고, D-17의 "동기 호출은 subscription → member 하나뿐"도 지켜진다. ACTIVE만이 아니라 PENDING까지 해지하는 이유 — 탈퇴 직후 결제가 승인되면 주인 없는 ACTIVE 구독이 남는다 | member → subscription gRPC 동기 호출 / 탈퇴 전용 환불 경로 신설 |
+| D-32 | 2026-07-19 | **탈퇴 시 Keycloak 계정을 비활성화**(`enabled=false` + `logout`)하고 도메인 트랜잭션 **커밋 전에** 호출. realm `accessTokenLifespan`을 3600 → 300으로 단축 | 탈퇴해도 계정이 살아 있어 토큰을 계속 받을 수 있었다. 삭제가 아닌 비활성화인 이유 — `sub`이 사라지면 기존 결제·환불 기록의 주체를 추적할 수 없다. `logout`까지 부르는 이유 — `enabled=false`는 새 발급만 막고 기존 refresh token은 살아 있다. 커밋 전에 부르는 이유 — 실패 시 롤백돼 탈퇴가 없던 일이 되는 편이, "DB상 탈퇴했는데 로그인은 되는" 상태가 조용히 남는 것보다 낫다. **잔여 구멍**: 이미 발행된 access token은 만료까지 유효(JWT는 상태를 보지 않음) → 노출 상한이 곧 토큰 수명이라 300초로 축소. 완전 차단은 P-11에서 | Keycloak 사용자 DELETE — 되돌릴 수 없고 결제 분쟁 시 대조 불가 / 커밋 후 호출 — 실패가 조용히 남음 / gateway가 매 요청 회원 상태 조회 — 모든 요청에 동기 호출 |
 | D-17 | 2026-07-18 | 서킷브레이커 = subscription → member gRPC 하나로 시작 | payment → subscription 동기 호출은 만들지 않는다 — `SubscriptionCreated` 이벤트에 필요한 데이터(plan·amount·memberId)를 전부 실어 보내므로(event-carried state transfer) 되물을 일이 없음. 동기 호출을 추가하면 이벤트로 끊은 결합을 다시 묶는 셈 | payment→subscription 동기 조회 |
 
 ## 미결
@@ -41,14 +44,14 @@
 | P-01 | PG사 연동 (실키는 사업자등록 필요) | 테스트 모드/Mock으로 시작, 실연동 시점 미정 |
 | P-02 | Consul 개발 모드 노드 수 (현재 3노드 `bootstrap-expect=3`) | D-14에 맞춰 1노드 개발 모드 전환 검토 |
 | P-03 | Chaos Monkey 적용 시점 | 사가·서킷브레이커 구현 완료 후 |
-| ~~P-04~~ | 회원탈퇴 사가 범위 | **부분 확정(D-16)**: 해지 시 환불 포함. member.events 큐 정의는 회원탈퇴 사가 구현 시 |
+| ~~P-04~~ | 회원탈퇴 사가 범위 | **해결(D-31)**: 해지 시 환불 포함(D-16). `member.events` 익스체인지 + `subscription.member-withdrawn` 큐 정의 완료 |
 | ~~P-05~~ | 서킷브레이커 대상 | **확정(D-17)**: subscription → member gRPC 하나 |
 | P-06 | Config Server 백엔드 | 현재 config-repo 디렉터리 native. 다이어그램은 git 소스로 표기 — git 백엔드 전환 여부 |
 | P-07 | 배포 대상 (EC2 / EKS / 로컬) | 미정. ELB 실제 도입(D-24)의 전제. EC2+compose 약 3일, EKS 1~2주 |
 | P-08 | ELB 도입 시 필수 대응 | 헬스체크 경로를 `/actuator/health`로 지정(기본 `/`는 404라 정상 인스턴스를 죽은 것으로 판단), gateway에 `forward-headers-strategy: framework`(미설정 시 클라이언트 IP가 전부 ELB IP로 기록됨) |
 | ~~P-09~~ | Keycloak issuer URL 통일 | **해결(D-20)**: JWKS 조회는 내부 주소, issuer 검증은 외부 주소로 분리 |
 | ~~P-10~~ | Keycloak ↔ member_db 가입 정합성 | **해결(D-20)**: Keycloak 생성 실패 시 트랜잭션 롤백, 연결 실패 시 Keycloak 사용자 보상 삭제 |
-| P-11 | **서비스 간 호출 시 서비스 토큰 검증** (Gateway 우회 차단) | 최종 구조도 신규 항목. 현재는 다운스트림이 `X-Member-Id` 헤더를 그대로 신뢰하므로, 네트워크에 접근 가능한 누구나 gateway를 건너뛰고 서비스를 직접 호출할 수 있다. Keycloak client credentials 방식이 자연스러움 → D-20 이후 |
+| P-11 | **서비스 간 호출 시 서비스 토큰 검증** (Gateway 우회 차단) | 최종 구조도 신규 항목. 현재는 다운스트림이 `X-Member-Id` 헤더를 그대로 신뢰하므로, 네트워크에 접근 가능한 누구나 gateway를 건너뛰고 서비스를 직접 호출할 수 있다. Keycloak client credentials 방식이 자연스러움 → D-20 이후. **D-32의 잔여 구멍(발행된 access token이 만료까지 유효)도 여기서 함께 다룬다** |
 | P-12 | Message Relay 표기 | 구조도는 별도 컴포넌트로 그렸으나 구현은 각 서비스 내부 릴레이(D-11). 외부 릴레이는 4개 서비스 DB에 모두 접속해야 해 DB per service·MySQL 계정 격리와 충돌. **구현은 D-11 유지**, 그림을 "각 서비스 내부 릴레이"로 읽는다 |
 | P-13 | inbox 패턴 도입 여부 | 구조도의 `in/out box` 중 inbox는 미구현. 현재 중복 소비는 payment 멱등키 + subscription 상태 확인으로 방어. inbox 테이블을 실제로 둘지 미정 |
 | P-14 | MySQL Replication ×3 / RabbitMQ ×3 Quorum / Mongo RS ×3 | 구조도의 운영 목표. 현재는 전부 단일 노드(D-09·D-10·D-14). 컨테이너 +8개 규모라 HA 검증 단계에서 별도 프로파일로 |

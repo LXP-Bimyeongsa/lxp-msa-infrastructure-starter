@@ -137,3 +137,79 @@
 - 서비스 간 토큰 검증 (P-11)
 - 재생 URL 접근 제어 (P-16)
 - README 스모크 절차 갱신 — 인증이 Keycloak으로 바뀌어 기존 절차가 낡음
+
+---
+
+## 2026-07-19 — 회원탈퇴 사가 · Outbox 공통화 · 탈퇴 회원 인증 차단
+
+PR 3개. Step 4의 마지막 도메인 조각을 끝냈다.
+
+| PR | 내용 |
+|---|---|
+| #20 | Outbox 구현을 `common-outbox` 모듈로 추출 (D-30) |
+| #21 | 회원탈퇴 사가 — 탈퇴 시 구독 해지·환불 (D-31) |
+| #22 | 탈퇴 회원의 인증 차단 — Keycloak 계정 비활성화 + 토큰 수명 단축 (D-32) |
+
+### 공통화를 먼저 한 이유
+
+subscription과 payment의 outbox 4개 파일이 **패키지 선언 한 줄 빼고 완전히 동일**했다.
+회원탈퇴 사가에서 member가 세 번째 복사본을 만들 참이었으므로, 복사가 늘기 전에 뽑았다.
+차이가 없는 코드였기 때문에 "억지 추상화" 위험이 없었다 — 만약 세 구현이 조금씩
+달랐다면 판단이 달라졌을 것이다.
+
+동작 변화가 없는 PR로 분리해서, 리뷰가 "회귀가 없는가"만 보면 되게 했다.
+
+### 실제로 터진 문제와 원인
+
+**컴포지트 빌드 모듈의 인코딩** — `common-outbox`가 한국어 Windows(CP949)에서
+컴파일에 실패했다. 소스는 UTF-8인데 javac이 빌드 호스트 기본 인코딩으로 읽었다.
+컴포지트 빌드로 포함되는 모듈은 **소비 서비스의 빌드 설정을 상속받지 않는다.**
+모듈 자신의 `build.gradle`에서 `options.encoding = 'UTF-8'`을 고정해야 한다.
+
+**Jackson이 딸려오지 않음** — `spring-boot-starter-data-jpa`와 `-amqp`는
+jackson-databind를 가져오지 않는다(web 스타터가 가져온다). `OutboxWriter`가
+`ObjectMapper`를 생성자로 받으므로 공통 모듈이 직접 선언해야 했다.
+
+**Keycloak realm import는 최초 기동에만 적용된다** — `accessTokenLifespan`을 고치고
+컨테이너를 재기동했는데 값이 그대로였다. 로그에 `Realm 'lxp' already exists. Import skipped`.
+**MySQL init 스크립트와 정확히 같은 함정**이다. realm 설정을 바꾸면 `docker compose down -v`가 필요하다.
+
+**realm JSON에 주석을 달 수 없다** — 설명용 키(`_comment_...`)를 넣었더니 import가
+통째로 실패했다(`Unrecognized field ... not marked as ignorable`). Keycloak은 알 수 없는
+필드를 거부한다. 배경 설명은 DECISIONS에 둔다.
+
+### 검증하다 발견한 것
+
+탈퇴 후 인증이 정말 막히는지 세 경로를 각각 재봤더니 하나가 열려 있었다.
+
+| 경로 | 결과 |
+|---|---|
+| 새 토큰 발급 | `invalid_grant` "Account disabled" — 차단 |
+| refresh_token 갱신 | `invalid_grant` "Session not active" — 차단 |
+| **기존 access token으로 API 호출** | **HTTP 200 — 열려 있음** |
+
+realm의 `accessTokenLifespan`이 3600이라 탈퇴 후 **최대 1시간** API가 열려 있었다.
+300초로 줄여 노출 창을 1/12로 좁혔다. 완전 차단은 gateway가 매 요청 회원 상태를
+조회해야 해서 P-11로 넘긴다.
+
+"계정을 비활성화했다"까지만 확인하고 끝냈으면 못 봤을 구멍이다.
+**막았다고 생각한 것을 실제로 뚫어봐야 한다.**
+
+### 검증 상태
+
+마지막에 `docker compose down -v` 후 전체 스택을 클린 상태로 재기동해서 확인했다.
+
+- realm 반영: `accessTokenLifespan` 300, 토큰 `expires_in` 300
+- RabbitMQ: `member.events` 익스체인지 · `member.withdrawn` 바인딩 정상 생성
+- 탈퇴 사가: ACTIVE + PENDING 구독 둘 다 CANCELLED → REFUNDED
+- 예약 결제: `billing_schedule.active` 둘 다 0 (D-27 경로 재사용)
+- 멱등: 재탈퇴 시 이벤트 재발행 없음, 중복 환불 0
+- outbox 미발행 잔여 0 (member·subscription·payment), DLQ 0
+
+### 남은 것
+
+- 서비스 간 토큰 검증 (P-11) — D-32의 잔여 구멍도 여기서 함께
+- 재생 URL 접근 제어 (P-16)
+- 정기 결제 재시도 정책 (P-15)
+- Jenkins 파이프라인 검증 — 유일한 미검증 영역
+- README 스모크 절차 갱신
