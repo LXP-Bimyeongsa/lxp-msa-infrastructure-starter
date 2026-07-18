@@ -7,8 +7,8 @@
 | 저장소 | [LXP-Bimyeongsa/lxp-msa-infrastructure-starter](https://github.com/LXP-Bimyeongsa/lxp-msa-infrastructure-starter) |
 | 서비스 | 6개 (gateway, config-server, member, course, subscription, payment) |
 | 컨테이너 | 21개 (서비스 6 + 인프라 15) |
-| 기록된 설계 결정 | 32건 (D-01 ~ D-32) |
-| 미결 항목 | 16건 (P-01 ~ P-16, 이 중 5건 해결) |
+| 기록된 설계 결정 | 33건 (D-01 ~ D-33) |
+| 미결 항목 | 18건 (P-01 ~ P-18, 이 중 6건 해결) |
 | 기술 스택 | Java 17 · Spring Boot 3.5 · Spring Cloud 2025.0 |
 
 ---
@@ -54,7 +54,7 @@ flowchart LR
 
 | 흐름 | 경로 |
 |---|---|
-| 인증 | client → Keycloak(토큰 발급) → Gateway(JWKS 검증) → `X-Member-Id` 주입 |
+| 인증 | client → Keycloak(토큰 발급) → Gateway(JWKS 검증) → `X-Member-Id` 주입 + 서비스 토큰 부착 |
 | 동기 호출 | subscription → member (gRPC + 서킷브레이커) |
 | 비동기 | 서비스 → Outbox → 내부 릴레이 → RabbitMQ → 소비 서비스 |
 | 대용량 파일 | client ↔ MinIO **직접** (서비스 JVM 미경유) |
@@ -71,6 +71,10 @@ flowchart LR
 - 가입 시 두 시스템에 함께 생성하고, 실패하면 보상 처리
 - Gateway가 JWKS로 서명 검증 → `X-Member-Id` 헤더로 다운스트림 전달
 - 클라이언트가 보낸 `X-Member-Id`는 **모든 경로에서 제거** (위장 차단)
+
+**서비스 간 호출 검증 (D-33)** — 다운스트림은 gateway가 붙인 서비스 토큰을 요구합니다. 그 전에는 `X-Member-Id` 헤더를 무조건 신뢰해서, 네트워크에 닿으면 gateway를 건너뛸 수 있었습니다.
+
+서명 검증만으로는 부족합니다 — **사용자 토큰도 같은 realm이 서명**하므로 서명은 통과합니다. 그래서 `aud: lxp-internal`까지 확인합니다. 이 audience를 실을 수 있는 클라이언트는 gateway 하나뿐입니다.
 
 ### 2-2. 구독-결제 사가 (코레오그래피)
 
@@ -257,7 +261,8 @@ Realm 'lxp' already exists. Import skipped
 
 | 항목 | 내용 |
 |---|---|
-| 서비스 간 토큰 검증 | 현재 다운스트림이 `X-Member-Id`를 그대로 신뢰 — 네트워크 접근이 가능하면 Gateway 우회 가능. 탈퇴 회원의 잔여 access token 문제(D-32)도 함께 |
+| gRPC 서비스 토큰 | REST는 막았지만(D-33) member-service의 gRPC 포트(9092)는 아직 토큰 없이 열려 있음. 서킷브레이커 실패 분류를 함께 정해야 함 |
+| 탈퇴 회원의 잔여 토큰 | 계정을 비활성화해도 이미 발행된 access token은 만료(300초)까지 유효. 막으려면 매 요청 상태 확인이 필요 |
 | 재생 URL 접근 제어 | 로그인만 하면 누구나 재생 URL 획득. 구독 확인을 넣으면 동기 호출이 늘어남 |
 | PG 실연동 | 현재 mock (금액 > 0이면 승인). 실키는 사업자등록 필요 |
 | 정기 결제 재시도 | 현재 1회 실패 시 즉시 중단. 실무의 dunning 정책 필요 여부 미정 |

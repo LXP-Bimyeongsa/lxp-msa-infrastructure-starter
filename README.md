@@ -185,6 +185,19 @@ curl -X POST http://localhost:8180/realms/lxp/protocol/openid-connect/token \
 > 한글이 든 JSON을 Git Bash에서 `curl -d`로 보내면 CP949로 인코딩돼 400이 납니다.
 > UTF-8 파일에 담아 `--data-binary @file`로 보내세요.
 
+**서비스 직접 호출은 막혀 있습니다** (D-33). 다운스트림은 gateway가 붙인 서비스 토큰을 요구합니다.
+
+```bash
+# gateway를 건너뛰고 직접 호출 → 401
+curl -i -H 'X-Member-Id: 1' http://localhost:8082/api/members/1
+
+# 유효한 사용자 토큰을 들고 가도 401 (audience가 gateway 것이 아님)
+curl -i -H "Authorization: Bearer $TOKEN" -H 'X-Member-Id: 1' http://localhost:8082/api/members/1
+
+# actuator는 토큰 없이 열려 있습니다 (healthcheck·Prometheus용)
+curl -i http://localhost:8082/actuator/health
+```
+
 > **초기화 스크립트는 최초 기동에만 실행됩니다.** `infrastructure/mysql/init/*.sql`과
 > `infrastructure/keycloak/realm-lxp.json`을 고쳤다면 `docker compose down -v`가 필요합니다.
 > Keycloak은 realm이 이미 있으면 `Realm 'lxp' already exists. Import skipped`를 남기고
