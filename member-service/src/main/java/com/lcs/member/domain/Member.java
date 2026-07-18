@@ -56,8 +56,18 @@ public class Member {
         this.keycloakId = keycloakId;
     }
 
-    public void withdraw() {
+    /**
+     * 탈퇴. 멱등 — 이미 WITHDRAWN이면 false.
+     *
+     * <p>Subscription.cancel()과 같은 규약이다. 호출 측이 반환값으로
+     * "실제로 상태가 바뀐 경우에만 이벤트를 발행한다"를 판단한다.
+     */
+    public boolean withdraw() {
+        if (status == MemberStatus.WITHDRAWN) {
+            return false;
+        }
         this.status = MemberStatus.WITHDRAWN;
+        return true;
     }
 
     public boolean isActive() {

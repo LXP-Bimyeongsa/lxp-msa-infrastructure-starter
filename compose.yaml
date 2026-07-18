@@ -204,6 +204,11 @@ services:
       MYSQL_DB_PORT: 3306
       MYSQL_USER: member
       MYSQL_PASSWORD: member
+      # 회원탈퇴 사가(D-31) — MemberWithdrawn을 member.events로 발행한다.
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
+      RABBITMQ_USER: lxp
+      RABBITMQ_PASSWORD: lxp
       GRPC_SERVER_PORT: 9092
       # issuer는 토큰에 박히는 외부 주소, Admin API는 내부 주소 (P-09)
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
@@ -222,6 +227,8 @@ services:
       config-server:
         condition: service_healthy
       mysql:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       keycloak:
         condition: service_healthy

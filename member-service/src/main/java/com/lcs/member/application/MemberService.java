@@ -1,8 +1,10 @@
 package com.lcs.member.application;
 
+import com.lcs.common.outbox.OutboxWriter;
 import com.lcs.member.domain.Member;
 import com.lcs.member.infrastructure.keycloak.KeycloakUserClient;
 import com.lcs.member.infrastructure.persistence.MemberRepository;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -12,13 +14,18 @@ import org.springframework.transaction.annotation.Transactional;
 public class MemberService {
 
     private static final Logger log = LoggerFactory.getLogger(MemberService.class);
+    private static final String AGGREGATE = "Member";
 
     private final MemberRepository memberRepository;
     private final KeycloakUserClient keycloakUserClient;
+    private final OutboxWriter outboxWriter;
 
-    public MemberService(MemberRepository memberRepository, KeycloakUserClient keycloakUserClient) {
+    public MemberService(MemberRepository memberRepository,
+                         KeycloakUserClient keycloakUserClient,
+                         OutboxWriter outboxWriter) {
         this.memberRepository = memberRepository;
         this.keycloakUserClient = keycloakUserClient;
+        this.outboxWriter = outboxWriter;
     }
 
     /**
@@ -52,6 +59,31 @@ public class MemberService {
             log.error("keycloakId 연결 실패 — Keycloak 사용자 보상 삭제: email={}", email);
             keycloakUserClient.deleteUser(keycloakId);
             throw e;
+        }
+        return member;
+    }
+
+    /**
+     * 탈퇴 — 회원탈퇴 사가의 시작점 (D-31).
+     *
+     * <p>member_db의 상태 전이와 MemberWithdrawn 이벤트를 한 트랜잭션으로 커밋한다.
+     * 이후는 코레오그래피다 — subscription이 구독을 해지하고, 그 SubscriptionCancelled를
+     * payment가 소비해 환불한다(D-16). member는 뒷일을 알지 못한다.
+     *
+     * <p>구독 해지를 여기서 gRPC로 직접 부르지 않는 이유 — 탈퇴가 subscription의
+     * 가용성에 묶인다. 구독 서비스가 죽어 있으면 탈퇴 자체가 불가능해진다.
+     *
+     * <p>이미 탈퇴한 회원이면 이벤트를 다시 발행하지 않는다. 재발행해도 소비 측이
+     * 멱등하지만, 굳이 환불 경로를 다시 돌릴 이유가 없다.
+     */
+    @Transactional
+    public Member withdraw(Long memberId) {
+        Member member = memberRepository.findById(memberId)
+                .orElseThrow(() -> new MemberNotFoundException(memberId));
+        if (member.withdraw()) {
+            outboxWriter.write(AGGREGATE, String.valueOf(member.getId()), "MemberWithdrawn", Map.of(
+                    "memberId", member.getId()
+            ));
         }
         return member;
     }

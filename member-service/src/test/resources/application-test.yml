@@ -19,6 +19,17 @@ spring:
       # H2를 쓰므로 엔티티로부터 생성한다.
       ddl-auto: create-drop
     open-in-view: false
+  rabbitmq:
+    listener:
+      simple:
+        # 리스너가 브로커 연결을 시도하지 않게 한다
+        auto-startup: false
+
+outbox:
+  relay:
+    # 릴레이 스케줄러 비활성 — 브로커 없이 outbox 기록만 검증한다
+    enabled: false
+    exchange: member.events
 
 management:
   zipkin:

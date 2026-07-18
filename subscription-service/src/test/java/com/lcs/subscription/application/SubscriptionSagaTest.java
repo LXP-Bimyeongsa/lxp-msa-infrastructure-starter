@@ -106,6 +106,49 @@ class SubscriptionSagaTest {
                 .isEqualTo(SubscriptionStatus.CANCELLED);
     }
 
+    @Test
+    @DisplayName("회원탈퇴를 받으면 살아 있는 구독을 전부 해지하고 각각 환불 이벤트를 낸다(D-31)")
+    void memberWithdrawnCancelsAllAliveSubscriptions() {
+        long memberId = 7L;
+        Subscription active = subscriptionService.subscribe(memberId, SubscriptionPlan.BASIC);
+        subscriptionService.onPaymentCompleted(active.getId());
+        // PENDING도 대상이다 — 탈퇴 직후 결제가 승인되면 주인 없는 ACTIVE가 남는다.
+        Subscription pending = subscriptionService.subscribe(memberId, SubscriptionPlan.PREMIUM);
+        long outboxBefore = outboxRepository.count();
+
+        subscriptionService.onMemberWithdrawn(memberId);
+
+        assertThat(subscriptionService.findById(active.getId()).getStatus())
+                .isEqualTo(SubscriptionStatus.CANCELLED);
+        assertThat(subscriptionService.findById(pending.getId()).getStatus())
+                .isEqualTo(SubscriptionStatus.CANCELLED);
+        // 구독 2건 → SubscriptionCancelled 2건
+        assertThat(outboxRepository.count()).isEqualTo(outboxBefore + 2);
+    }
+
+    @Test
+    @DisplayName("같은 회원탈퇴 이벤트가 두 번 와도 환불 이벤트는 한 번만 나간다(멱등)")
+    void memberWithdrawnIsIdempotent() {
+        long memberId = 8L;
+        subscriptionService.subscribe(memberId, SubscriptionPlan.BASIC);
+
+        subscriptionService.onMemberWithdrawn(memberId);
+        long outboxAfterFirst = outboxRepository.count();
+        subscriptionService.onMemberWithdrawn(memberId); // 재전송 시뮬레이션
+
+        assertThat(outboxRepository.count()).isEqualTo(outboxAfterFirst);
+    }
+
+    @Test
+    @DisplayName("구독이 없는 회원이 탈퇴해도 조용히 끝난다")
+    void memberWithdrawnWithoutSubscriptions() {
+        long outboxBefore = outboxRepository.count();
+
+        subscriptionService.onMemberWithdrawn(999L);
+
+        assertThat(outboxRepository.count()).isEqualTo(outboxBefore);
+    }
+
     private OutboxMessage latestOutbox() {
         return outboxRepository.findAll().stream()
                 .reduce((first, second) -> second)

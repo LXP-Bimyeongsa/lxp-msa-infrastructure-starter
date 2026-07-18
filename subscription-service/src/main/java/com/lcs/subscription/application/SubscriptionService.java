@@ -3,7 +3,9 @@ package com.lcs.subscription.application;
 import com.lcs.common.outbox.OutboxWriter;
 import com.lcs.subscription.domain.Subscription;
 import com.lcs.subscription.domain.SubscriptionPlan;
+import com.lcs.subscription.domain.SubscriptionStatus;
 import com.lcs.subscription.infrastructure.persistence.SubscriptionRepository;
+import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -82,6 +84,34 @@ public class SubscriptionService {
             log.info("결제 실패 보상으로 구독 취소: subscriptionId={} reason={}", subscriptionId, reason);
             // 결제가 실패했으므로 환불할 것이 없다 — SubscriptionCancelled를 발행하지 않는다.
         }
+    }
+
+    /**
+     * MemberWithdrawn 소비 — 회원탈퇴 사가 (D-31).
+     *
+     * <p>살아 있는 구독을 전부 해지하고 각각 SubscriptionCancelled를 발행한다.
+     * 그 뒤는 기존 해지 경로와 완전히 같다 — payment가 소비해 환불하고(D-16)
+     * 예약된 다음 결제를 취소한다(D-27). 탈퇴 전용 환불 경로를 새로 만들지 않는다.
+     *
+     * <p>멱등 — cancel()이 이미 CANCELLED인 구독에 false를 돌려주므로 이벤트가
+     * 재발행되지 않는다. 같은 MemberWithdrawn이 두 번 와도 환불은 한 번만 돈다.
+     *
+     * <p>구독이 하나도 없는 회원도 정상이다. 아무것도 하지 않고 끝난다.
+     */
+    @Transactional
+    public void onMemberWithdrawn(Long memberId) {
+        List<Subscription> alive =
+                subscriptionRepository.findByMemberIdAndStatusNot(memberId, SubscriptionStatus.CANCELLED);
+        for (Subscription subscription : alive) {
+            if (subscription.cancel()) {
+                outboxWriter.write(AGGREGATE, String.valueOf(subscription.getId()), "SubscriptionCancelled", Map.of(
+                        "subscriptionId", subscription.getId(),
+                        "memberId", subscription.getMemberId(),
+                        "amount", subscription.getAmount()
+                ));
+            }
+        }
+        log.info("회원탈퇴로 구독 해지: memberId={} 건수={}", memberId, alive.size());
     }
 
     @Transactional(readOnly = true)

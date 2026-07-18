@@ -10,10 +10,12 @@ import java.time.Instant;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -45,6 +47,17 @@ public class MemberController {
     @GetMapping("/{memberId}")
     public MemberResponse find(@PathVariable Long memberId) {
         return MemberResponse.from(memberService.findById(memberId));
+    }
+
+    /**
+     * 탈퇴 — 회원탈퇴 사가의 시작점 (D-31).
+     *
+     * <p>경로에 memberId를 받지 않고 {@code /me}로 고정한다. 대상은 gateway가 JWT에서
+     * 뽑아 넣은 X-Member-Id로만 정해진다 — 경로로 받으면 남의 계정을 탈퇴시킬 수 있다.
+     */
+    @DeleteMapping("/me")
+    public MemberResponse withdraw(@RequestHeader("X-Member-Id") Long memberId) {
+        return MemberResponse.from(memberService.withdraw(memberId));
     }
 
     public record RegisterRequest(
