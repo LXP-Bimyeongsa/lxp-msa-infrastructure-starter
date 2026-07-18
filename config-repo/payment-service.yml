@@ -1,2 +1,29 @@
 server:
   port: 8085
+
+spring:
+  datasource:
+    # 서비스 전용 계정. payment_db 외의 스키마에는 권한이 없다. (D-09)
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_DB_PORT:3306}/payment_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${MYSQL_USER:payment}
+    password: ${MYSQL_PASSWORD:payment}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      # 스키마 소유권은 infrastructure/mysql/init SQL에 있다.
+      ddl-auto: validate
+    open-in-view: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_AMQP_PORT:5672}
+    username: ${RABBITMQ_USER:lxp}
+    password: ${RABBITMQ_PASSWORD:lxp}
+    publisher-confirm-type: correlated
+    listener:
+      simple:
+        default-requeue-rejected: false
+
+outbox:
+  relay:
+    exchange: payment.events
+    poll-interval-ms: 1000

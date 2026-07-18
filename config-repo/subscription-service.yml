@@ -1,2 +1,31 @@
 server:
   port: 8084
+
+spring:
+  datasource:
+    # 서비스 전용 계정. subscription_db 외의 스키마에는 권한이 없다. (D-09)
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_DB_PORT:3306}/subscription_db?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8
+    username: ${MYSQL_USER:subscription}
+    password: ${MYSQL_PASSWORD:subscription}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      # 스키마 소유권은 infrastructure/mysql/init SQL에 있다.
+      ddl-auto: validate
+    open-in-view: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_AMQP_PORT:5672}
+    username: ${RABBITMQ_USER:lxp}
+    password: ${RABBITMQ_PASSWORD:lxp}
+    # outbox 릴레이가 confirm을 기다렸다가 발행 완료를 마킹한다.
+    publisher-confirm-type: correlated
+    listener:
+      simple:
+        # 처리 실패 메시지는 재큐잉하지 않고 DLX로 보낸다. 무한 재시도 루프 방지.
+        default-requeue-rejected: false
+
+outbox:
+  relay:
+    exchange: subscription.events
+    poll-interval-ms: 1000

@@ -1,0 +1,35 @@
+# 테스트는 H2 인메모리 + RabbitMQ 미접속으로 돌린다.
+spring:
+  config:
+    import: "optional:configserver:"
+  cloud:
+    consul:
+      enabled: false
+      discovery:
+        enabled: false
+  datasource:
+    url: jdbc:h2:mem:subscription_db;MODE=MySQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+  rabbitmq:
+    listener:
+      simple:
+        # 리스너가 브로커 연결을 시도하지 않게 한다
+        auto-startup: false
+
+outbox:
+  relay:
+    # 릴레이 스케줄러 비활성 — 브로커 없이 outbox 기록만 검증한다
+    enabled: false
+    exchange: subscription.events
+
+management:
+  zipkin:
+    tracing:
+      export:
+        enabled: false
