@@ -2,10 +2,11 @@
 
 ## 브랜치 · PR
 
-- `main`은 보호 브랜치: **PR + 승인 1명** 없이는 머지 불가 (Organization admin만 bypass).
+- `main`은 보호 브랜치: **직접 push 불가, PR을 거쳐야 머지 가능**.
+- **승인은 필수가 아니다**(required approvals = 0) — 누구나 자기 PR을 머지할 수 있다. 초기 속도를 위한 선택이며, 리뷰 자체를 없애자는 뜻은 아니다.
 - 브랜치 이름: `feat/<주제>`, `chore/<주제>`, `docs/<주제>`, `fix/<주제>`
   - 예: `feat/payment-service-skeleton`, `chore/compose-split`
-- PR 작성자는 자기 PR을 승인할 수 없다 → 팀원 간 상호 리뷰.
+- 강제되지 않을 뿐이므로, 도메인 로직·계약(proto/이벤트)·인프라 변경은 **머지 전 리뷰를 요청하는 것을 권장**한다.
 - PR은 작게: 한 PR = 한 목적. 서비스 골격과 compose 변경을 한 PR에 섞지 않는다.
 - 쪼개는 기준·크기 가이드·스택 PR 운용은 [PR_STRATEGY.md](PR_STRATEGY.md) 참고.
 

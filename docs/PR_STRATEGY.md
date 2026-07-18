@@ -80,8 +80,8 @@ main ← docs/conventions ← docs/decisions ← docs/architecture
 
 ## 리뷰 규칙
 
-- `main`은 **승인 1명 필수**, 작성자 자기 승인 불가 ([CONVENTIONS.md](CONVENTIONS.md)).
-- 새 커밋이 push되면 기존 승인은 자동 무효화된다(dismiss stale) — 승인 후 몰래 밀어넣기 방지.
+- `main`은 PR을 거쳐야 하지만 **승인은 강제되지 않는다**(required approvals = 0). 누구나 머지 가능 ([CONVENTIONS.md](CONVENTIONS.md)).
+- 강제가 없다는 것은 리뷰가 불필요하다는 뜻이 아니다. 리뷰 없이 머지해도 되는 것은 문서·설정·자기 담당 서비스 내부 변경까지고, **서비스 간 계약(proto·이벤트)과 공용 인프라(compose·config-repo) 변경은 리뷰를 요청**한다 — 이 둘은 남의 작업을 깨뜨린다.
 - 리뷰어는 24시간 내 1차 응답. 못 보면 그 사실이라도 남긴다.
 - 지적은 심각도를 붙인다: `[blocking]` 머지 불가 / `[non-blocking]` 다음에 고쳐도 됨 / `[nit]` 취향.
 
