@@ -99,6 +99,33 @@ services:
     networks: [lxp-net]
 
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    container_name: lxp-keycloak
+    command: start-dev --import-realm
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+      # 토큰의 iss는 클라이언트가 접속한 주소 기준으로 발급된다.
+      # 이 값과 gateway의 issuer-uri가 어긋나면 검증이 전부 401이 된다 (P-09).
+      KC_HOSTNAME: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}
+      KC_HOSTNAME_STRICT: "false"
+      KC_HTTP_ENABLED: "true"
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "${KEYCLOAK_PORT:-8180}:8080"
+    volumes:
+      - ./infrastructure/keycloak:/opt/keycloak/data/import:ro
+      - keycloak-data:/opt/keycloak/data
+    networks: [lxp-net]
+    healthcheck:
+      # 26.x는 관리 포트(9000)에서 헬스를 제공한다.
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && cat <&3 | grep -q '\"status\": \"UP\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+
   gateway:
     build:
       context: .
@@ -110,6 +137,10 @@ services:
       LOG_DIR: /logs
       CONFIG_SERVER_URL: http://config-server:8888
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      # issuer는 토큰에 박힌 외부 주소, JWKS는 컨테이너에서 닿는 내부 주소.
+      # 둘을 같게 두면 JWKS를 못 가져오거나 iss 불일치로 401이 난다 (P-09).
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
     ports:
       - "8080:8080"
     volumes:
@@ -118,6 +149,8 @@ services:
       consul-1:
         condition: service_healthy
       config-server:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:
@@ -172,6 +205,12 @@ services:
       MYSQL_USER: member
       MYSQL_PASSWORD: member
       GRPC_SERVER_PORT: 9092
+      # issuer는 토큰에 박히는 외부 주소, Admin API는 내부 주소 (P-09)
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_ADMIN_SERVER_URL: http://keycloak:8080
+      KEYCLOAK_REALM: lxp
+      KEYCLOAK_CLIENT_ID: member-service
+      KEYCLOAK_CLIENT_SECRET: ${KEYCLOAK_MEMBER_CLIENT_SECRET:-member-service-secret}
     ports:
       - "8082:8082"
       - "9092:9092"   # gRPC (subscription-service가 호출)
@@ -183,6 +222,8 @@ services:
       config-server:
         condition: service_healthy
       mysql:
+        condition: service_healthy
+      keycloak:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:
@@ -320,6 +361,7 @@ networks:
     driver: bridge
 
 volumes:
+  keycloak-data:
   grafana-data:
   loki-data:
   alloy-data:

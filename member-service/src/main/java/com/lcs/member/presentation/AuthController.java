@@ -1,27 +1,23 @@
 package com.lcs.member.presentation;
 
-import com.lcs.member.application.AuthService;
-import com.lcs.member.infrastructure.jwt.JwtTokenProvider;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
 import java.time.Instant;
 import java.util.Map;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// 인증(JWT 발급)은 member-service가 담당하고 Gateway는 검증만 한다. (docs/DECISIONS.md D-04)
+// 토큰 발급은 Keycloak이 담당한다 (D-20).
+// 이 서비스는 더 이상 로그인 엔드포인트를 제공하지 않는다 —
+// 클라이언트는 Keycloak의 토큰 엔드포인트를 직접 사용한다.
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
 
-    private final AuthService authService;
+    private final String issuerUri;
 
-    public AuthController(AuthService authService) {
-        this.authService = authService;
+    public AuthController(@Value("${keycloak.issuer-uri}") String issuerUri) {
+        this.issuerUri = issuerUri;
     }
 
     @GetMapping("/ping")
@@ -34,22 +30,14 @@ public class AuthController {
         );
     }
 
-    @PostMapping("/login")
-    public TokenResponse login(@Valid @RequestBody LoginRequest request) {
-        JwtTokenProvider.IssuedToken token = authService.login(request.email(), request.password());
-        return new TokenResponse(token.accessToken(), "Bearer", token.expiresInSeconds());
-    }
-
-    public record LoginRequest(
-            @NotBlank @Email String email,
-            @NotBlank String password
-    ) {
-    }
-
-    public record TokenResponse(
-            String accessToken,
-            String tokenType,
-            long expiresIn
-    ) {
+    /** 클라이언트가 어디로 로그인해야 하는지 알려준다. */
+    @GetMapping("/config")
+    public Map<String, Object> config() {
+        return Map.of(
+                "issuer", issuerUri,
+                "tokenEndpoint", issuerUri + "/protocol/openid-connect/token",
+                "authorizationEndpoint", issuerUri + "/protocol/openid-connect/auth",
+                "clientId", "lxp-web"
+        );
     }
 }

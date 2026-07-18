@@ -23,10 +23,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'io.micrometer:micrometer-tracing-bridge-brave'
     implementation 'io.zipkin.reporter2:zipkin-reporter-brave'
-    // JWT 검증 (발급은 member-service 담당, D-04)
-    implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
-    runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+    // Keycloak이 발급한 토큰을 JWKS로 검증한다 (D-20).
+    // 대칭키를 공유하던 방식(D-04)을 대체한다 — gateway는 공개키만 알면 된다.
+    implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
 }

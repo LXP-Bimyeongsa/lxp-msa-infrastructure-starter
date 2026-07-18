@@ -1,12 +1,6 @@
 package com.lcs.gateway.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.JwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
-import javax.crypto.SecretKey;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.cloud.gateway.filter.GatewayFilterChain;
 import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
@@ -15,33 +9,41 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.server.reactive.ServerHttpRequest;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.security.oauth2.jwt.ReactiveJwtDecoder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
 
-// JWT 검증은 gateway가 담당한다(D-04). 발급은 member-service.
-// 검증 통과 시 memberId를 X-Member-Id 헤더로 다운스트림에 전달한다 —
-// 각 서비스는 토큰을 다시 파싱하지 않고 이 헤더를 신뢰한다(신뢰 경계는 gateway).
+// 토큰 검증은 gateway가 전담한다. 발급은 Keycloak (D-20).
+//
+// 검증 통과 시 Keycloak의 sub를 X-Member-Id 헤더로 다운스트림에 전달한다.
+// 각 서비스는 토큰을 다시 파싱하지 않고 이 헤더를 신뢰한다 —
+// 신뢰 경계가 gateway이기 때문이다. 그래서 클라이언트가 직접 보낸
+// X-Member-Id는 어떤 경로에서든 반드시 제거해야 한다.
 @Component
 public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
 
-    private final SecretKey key;
+    static final String MEMBER_ID_HEADER = "X-Member-Id";
 
-    public JwtAuthenticationFilter(@Value("${jwt.secret}") String secret) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    // Keycloak sub는 UUID지만, 도메인 서비스들은 숫자 memberId를 쓴다.
+    // sub를 그대로 내려보내면 subscription/payment/course의 컬럼 타입과
+    // gRPC 계약까지 전부 바꿔야 한다. 대신 가입 시 Keycloak 사용자 속성에
+    // 내부 memberId를 심고, 그것을 클레임으로 받아 전달한다.
+    private static final String MEMBER_ID_CLAIM = "member_id";
+
+    private final ReactiveJwtDecoder jwtDecoder;
+
+    public JwtAuthenticationFilter(ReactiveJwtDecoder jwtDecoder) {
+        this.jwtDecoder = jwtDecoder;
     }
 
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, GatewayFilterChain chain) {
         ServerHttpRequest request = exchange.getRequest();
-        String path = request.getURI().getPath();
 
-        if (PublicPaths.isPublic(request.getMethod(), path)) {
-            // 클라이언트가 X-Member-Id를 직접 꽂아 보내는 위장을 차단한다.
-            ServerHttpRequest sanitized = request.mutate()
-                    .headers(h -> h.remove("X-Member-Id"))
-                    .build();
-            return chain.filter(exchange.mutate().request(sanitized).build());
+        if (PublicPaths.isPublic(request.getMethod(), request.getURI().getPath())) {
+            return chain.filter(exchange.mutate().request(stripMemberId(request)).build());
         }
 
         String authorization = request.getHeaders().getFirst(HttpHeaders.AUTHORIZATION);
@@ -49,24 +51,33 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
             return unauthorized(exchange, "인증 토큰이 없습니다.");
         }
 
-        try {
-            Claims claims = Jwts.parser()
-                    .verifyWith(key)
-                    .build()
-                    .parseSignedClaims(authorization.substring(7))
-                    .getPayload();
+        return jwtDecoder.decode(authorization.substring(7))
+                .flatMap(jwt -> {
+                    String memberId = jwt.getClaimAsString(MEMBER_ID_CLAIM);
+                    if (memberId == null) {
+                        // Keycloak에는 있으나 member_id 속성이 없는 계정.
+                        // 가입 절차를 거치지 않았다는 뜻이므로 통과시키지 않는다.
+                        return unauthorized(exchange, "가입이 완료되지 않은 계정입니다.");
+                    }
+                    return chain.filter(exchange.mutate()
+                            .request(withMemberId(request, memberId))
+                            .build());
+                })
+                // 서명 불일치·만료·형식 오류를 구분하지 않는다. 알려주면 공격자에게 힌트가 된다.
+                .onErrorResume(e -> unauthorized(exchange, "유효하지 않은 토큰입니다."));
+    }
 
-            ServerHttpRequest authenticated = request.mutate()
-                    .headers(h -> {
-                        h.remove("X-Member-Id");
-                        h.set("X-Member-Id", claims.getSubject());
-                    })
-                    .build();
-            return chain.filter(exchange.mutate().request(authenticated).build());
-        } catch (JwtException | IllegalArgumentException e) {
-            // 서명 불일치 · 만료 · 형식 오류 모두 동일 응답. 원인을 구분해주면 공격자에게 힌트가 된다.
-            return unauthorized(exchange, "유효하지 않은 토큰입니다.");
-        }
+    private ServerHttpRequest stripMemberId(ServerHttpRequest request) {
+        return request.mutate().headers(h -> h.remove(MEMBER_ID_HEADER)).build();
+    }
+
+    private ServerHttpRequest withMemberId(ServerHttpRequest request, String memberId) {
+        return request.mutate()
+                .headers(h -> {
+                    h.remove(MEMBER_ID_HEADER);
+                    h.set(MEMBER_ID_HEADER, memberId);
+                })
+                .build();
     }
 
     private Mono<Void> unauthorized(ServerWebExchange exchange, String message) {

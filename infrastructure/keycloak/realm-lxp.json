@@ -1,0 +1,85 @@
+{
+  "realm": "lxp",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "accessTokenLifespan": 3600,
+
+  "components": {
+    "org.keycloak.userprofile.UserProfileProvider": [
+      {
+        "providerId": "declarative-user-profile",
+        "subComponents": {},
+        "config": {
+          "kc.user.profile.config": [
+            "{\"attributes\":[{\"name\":\"username\",\"displayName\":\"${username}\",\"validations\":{\"length\":{\"min\":3,\"max\":255}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"email\",\"displayName\":\"${email}\",\"validations\":{\"email\":{}},\"permissions\":{\"view\":[\"admin\",\"user\"],\"edit\":[\"admin\"]},\"multivalued\":false},{\"name\":\"member_id\",\"displayName\":\"Internal member id\",\"permissions\":{\"view\":[\"admin\"],\"edit\":[\"admin\"]},\"multivalued\":false}],\"groups\":[]}"
+          ]
+        }
+      }
+    ]
+  },
+
+  "requiredActions": [
+    {
+      "alias": "VERIFY_PROFILE",
+      "name": "Verify Profile",
+      "providerId": "VERIFY_PROFILE",
+      "enabled": false,
+      "defaultAction": false,
+      "priority": 90,
+      "config": {}
+    }
+  ],
+
+  "clients": [
+    {
+      "clientId": "lxp-web",
+      "name": "LXP Web Client",
+      "enabled": true,
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": ["*"],
+      "webOrigins": ["*"],
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "member-id",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-attribute-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "member_id",
+            "claim.name": "member_id",
+            "jsonType.label": "long",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "member-service",
+      "name": "member-service (Admin API 호출용)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "member-service-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect"
+    }
+  ],
+
+  "users": [
+    {
+      "username": "service-account-member-service",
+      "enabled": true,
+      "serviceAccountClientId": "member-service",
+      "clientRoles": {
+        "realm-management": ["manage-users", "view-users"]
+      }
+    }
+  ]
+}
