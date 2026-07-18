@@ -75,12 +75,24 @@ public class MemberService {
      *
      * <p>이미 탈퇴한 회원이면 이벤트를 다시 발행하지 않는다. 재발행해도 소비 측이
      * 멱등하지만, 굳이 환불 경로를 다시 돌릴 이유가 없다.
+     *
+     * <p>Keycloak 비활성화를 커밋 전에 부르는 이유 (D-32) — 실패하면 트랜잭션이
+     * 롤백돼 탈퇴 자체가 없던 일이 된다. 반대로 커밋 후에 부르면, 실패했을 때
+     * "DB상 탈퇴했는데 로그인은 되는" 상태가 남는다. 둘 중에는 전자가 낫다:
+     * 탈퇴 실패는 재시도하면 되지만, 인증이 열린 채로 탈퇴된 계정은 조용하다.
      */
     @Transactional
     public Member withdraw(Long memberId) {
         Member member = memberRepository.findById(memberId)
                 .orElseThrow(() -> new MemberNotFoundException(memberId));
         if (member.withdraw()) {
+            // keycloakId가 없는 회원은 Keycloak 이관(D-20) 이전에 만들어진 행이다.
+            // 끊을 자격증명이 애초에 없으므로 건너뛴다.
+            if (member.getKeycloakId() != null) {
+                keycloakUserClient.disableUser(member.getKeycloakId());
+            } else {
+                log.warn("keycloakId 없는 회원 탈퇴 — 계정 비활성화 생략: memberId={}", memberId);
+            }
             outboxWriter.write(AGGREGATE, String.valueOf(member.getId()), "MemberWithdrawn", Map.of(
                     "memberId", member.getId()
             ));

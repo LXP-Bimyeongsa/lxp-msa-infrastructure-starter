@@ -5,12 +5,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.BDDMockito.willThrow;
 
 import com.lcs.common.outbox.OutboxMessage;
 import com.lcs.common.outbox.OutboxRepository;
 import com.lcs.member.domain.Member;
 import com.lcs.member.domain.MemberStatus;
 import com.lcs.member.infrastructure.keycloak.KeycloakUserClient;
+import com.lcs.member.infrastructure.keycloak.KeycloakUserUpdateException;
 import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,6 +74,32 @@ class MemberWithdrawalTest {
     void withdrawUnknownMember() {
         assertThatThrownBy(() -> memberService.withdraw(999_999L))
                 .isInstanceOf(MemberNotFoundException.class);
+    }
+
+    @Test
+    @DisplayName("탈퇴 시 Keycloak 계정을 비활성화한다 — 탈퇴 후 토큰을 받지 못하게(D-32)")
+    void withdrawDisablesKeycloakAccount() {
+        Member member = register("withdraw-disable@lxp.dev");
+
+        memberService.withdraw(member.getId());
+
+        then(keycloakUserClient).should().disableUser("kc-withdraw-disable@lxp.dev");
+    }
+
+    @Test
+    @DisplayName("Keycloak 비활성화가 실패하면 탈퇴가 롤백된다 — 인증이 열린 채 탈퇴되지 않도록")
+    void withdrawRollsBackWhenKeycloakFails() {
+        Member member = register("withdraw-kc-fail@lxp.dev");
+        willThrow(new KeycloakUserUpdateException("boom", null))
+                .given(keycloakUserClient).disableUser(anyString());
+
+        assertThatThrownBy(() -> memberService.withdraw(member.getId()))
+                .isInstanceOf(KeycloakUserUpdateException.class);
+
+        // 롤백됐으므로 여전히 정상 회원이고, 탈퇴 이벤트도 남지 않는다.
+        assertThat(memberService.findById(member.getId()).getStatus())
+                .isEqualTo(MemberStatus.ACTIVE);
+        assertThat(withdrawnEventsOf(member.getId())).isEmpty();
     }
 
     private Member register(String email) {
