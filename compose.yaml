@@ -203,6 +203,15 @@ services:
       LOG_DIR: /logs
       CONFIG_SERVER_URL: http://config-server:8888
       ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      MONGO_HOST: mongo
+      MONGO_DB_PORT: 27017
+      # 서버가 객체 존재를 확인할 때 쓰는 내부 주소
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
+      # presigned URL 서명 주소 — 브라우저가 접속할 주소여야 한다.
+      # 내부 주소로 서명하면 URL이 도커 밖에서 열리지 않는다.
+      MINIO_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT:-9000}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
       - "8083:8083"
     volumes:
@@ -211,6 +220,10 @@ services:
       consul-1:
         condition: service_healthy
       config-server:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:
