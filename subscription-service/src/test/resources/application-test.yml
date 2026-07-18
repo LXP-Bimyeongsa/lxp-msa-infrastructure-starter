@@ -33,3 +33,10 @@ management:
     tracing:
       export:
         enabled: false
+
+# 서비스 토큰 검증 (D-33) — 테스트는 HTTP를 거치지 않으므로 실제 조회는 일어나지 않는다.
+# 다만 JwtDecoder 빈 생성에 값이 필요해서 채워 둔다.
+internal-auth:
+  issuer-uri: http://localhost:8180/realms/lxp
+  jwk-set-uri: http://localhost:8180/realms/lxp/protocol/openid-connect/certs
+  audience: lxp-internal

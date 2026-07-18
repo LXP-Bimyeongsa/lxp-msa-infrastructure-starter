@@ -141,6 +141,10 @@ services:
       # 둘을 같게 두면 JWKS를 못 가져오거나 iss 불일치로 401이 난다 (P-09).
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      # 서비스 토큰 발급 (D-33). 발급도 컨테이너 안에서 하므로 내부 주소다.
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/token
+      KEYCLOAK_GATEWAY_CLIENT_ID: lxp-gateway
+      KEYCLOAK_GATEWAY_CLIENT_SECRET: ${KEYCLOAK_GATEWAY_CLIENT_SECRET:-lxp-gateway-secret}
     ports:
       - "8080:8080"
     volumes:
@@ -210,8 +214,9 @@ services:
       RABBITMQ_USER: lxp
       RABBITMQ_PASSWORD: lxp
       GRPC_SERVER_PORT: 9092
-      # issuer는 토큰에 박히는 외부 주소, Admin API는 내부 주소 (P-09)
+      # issuer는 토큰에 박히는 외부 주소, Admin API·JWKS는 내부 주소 (P-09)
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
       KEYCLOAK_ADMIN_SERVER_URL: http://keycloak:8080
       KEYCLOAK_REALM: lxp
       KEYCLOAK_CLIENT_ID: member-service
@@ -260,6 +265,9 @@ services:
       MINIO_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT:-9000}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
     ports:
       - "8083:8083"
     volumes:
@@ -298,6 +306,9 @@ services:
       MYSQL_PASSWORD: subscription
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_AMQP_PORT: 5672
+      # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
     ports:
       - "8084:8084"
     volumes:
@@ -340,6 +351,9 @@ services:
       BILLING_PERIOD_DAYS: ${BILLING_PERIOD_DAYS:-30}
       BILLING_SCHEDULER_ENABLED: ${BILLING_SCHEDULER_ENABLED:-true}
       BILLING_SCHEDULER_INTERVAL_MS: ${BILLING_SCHEDULER_INTERVAL_MS:-60000}
+      # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
     ports:
       - "8085:8085"
     volumes:
