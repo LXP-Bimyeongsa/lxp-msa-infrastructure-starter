@@ -33,3 +33,4 @@
 | P-03 | Chaos Monkey 적용 시점 | 사가·서킷브레이커 구현 완료 후 |
 | ~~P-04~~ | 회원탈퇴 사가 범위 | **부분 확정(D-16)**: 해지 시 환불 포함. member.events 큐 정의는 회원탈퇴 사가 구현 시 |
 | ~~P-05~~ | 서킷브레이커 대상 | **확정(D-17)**: subscription → member gRPC 하나 |
+| P-06 | Config Server 백엔드 | 현재 config-repo 디렉터리 native. 다이어그램은 git 소스로 표기 — git 백엔드 전환 여부 |

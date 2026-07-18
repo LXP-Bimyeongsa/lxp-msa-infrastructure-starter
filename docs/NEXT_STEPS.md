@@ -30,6 +30,7 @@
 - [ ] member-service: 회원 가입·로그인·JWT 발급 / Gateway JWT 검증
 - [ ] course-service: 강의 메타 CRUD + MinIO Presigned URL 발급 (D-07)
 - [ ] subscription-service ↔ payment-service 사가 (Outbox → RabbitMQ 코레오그래피)
+- [ ] 회원탈퇴 사가: member-service → subscription-service 구독해지 (P-04 범위 확정 후)
 - [ ] payment-service 멱등키 처리
 - [ ] gRPC 계약 정의 + Resilience4J 서킷브레이커
 
