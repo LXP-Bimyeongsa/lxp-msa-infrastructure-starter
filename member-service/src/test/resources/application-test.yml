@@ -25,3 +25,8 @@ management:
     tracing:
       export:
         enabled: false
+
+# 테스트 전용 시크릿 (32바이트 이상)
+jwt:
+  secret: test-only-secret-not-for-production-0123456789
+  access-token-ttl-seconds: 3600

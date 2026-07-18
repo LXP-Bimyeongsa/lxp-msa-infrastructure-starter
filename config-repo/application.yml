@@ -30,3 +30,10 @@ logging:
     root: INFO
   pattern:
     correlation: "[%X{traceId:-},%X{spanId:-}] "
+
+# JWT — member-service가 발급, gateway가 검증 (D-04).
+# 같은 HS256 시크릿을 양쪽이 공유해야 하므로 중앙 설정에 둔다.
+# 아래 기본값은 로컬 개발 전용이다. 운영에서는 JWT_SECRET 환경변수로 반드시 교체한다.
+jwt:
+  secret: ${JWT_SECRET:lxp-local-dev-only-secret-change-me-0123456789}
+  access-token-ttl-seconds: ${JWT_TTL_SECONDS:3600}
