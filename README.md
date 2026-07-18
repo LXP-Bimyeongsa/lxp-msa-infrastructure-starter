@@ -8,10 +8,10 @@
 Client
   ↓
 Public API Gateway
-  ├─ auth-service
-  ├─ member-service
+  ├─ member-service         # 회원 + 인증(JWT 발급)
   ├─ course-service
-  └─ subscription-service   # 구독 + 결제 (payment 도메인 임시 통합)
+  ├─ subscription-service
+  └─ payment-service
 
 공통 인프라
   ├─ config-server
@@ -25,8 +25,9 @@ Public API Gateway
 
 모든 도메인 서비스는 Gateway를 단일 진입점으로 두고 경로 기반으로 라우팅합니다. `config-server`와 Consul 등 공통 인프라는 Gateway에 노출하지 않고 서비스가 직접 사용합니다.
 
-> 구독(subscription)과 결제(payment) 도메인은 현재 결합도가 높아 `subscription-service` 하나로 통합해 운영합니다. `/api/subscriptions/**`와
-`/api/payments/**` 모두 이 서비스가 서빙하며, 도메인 경계가 명확해지면 별도 서비스로 분리할 예정입니다.
+> 인증은 `member-service`가 담당합니다(`/api/auth/**`). Gateway는 JWT 검증만 하고 발급은 member-service가 합니다.
+> 구독과 결제는 사가 코레오그래피를 위해 `subscription-service`와 `payment-service`로 분리돼 있습니다.
+> 배경은 [docs/DECISIONS.md](docs/DECISIONS.md)를 참고하세요.
 
 ## 프로젝트 구성
 
@@ -37,13 +38,17 @@ Public API Gateway
 lxp-msa-infrastructure-starter
 ├─ gateway
 ├─ config-server
-├─ auth-service
-├─ member-service
+├─ member-service         # 회원 + 인증
 ├─ course-service
 ├─ subscription-service
+├─ payment-service
 ├─ config-repo            # config-server가 서빙하는 설정 파일
-├─ infrastructure         # prometheus·grafana·loki·alloy 설정, 로그
+├─ infrastructure         # prometheus·grafana·loki·alloy·mysql·mongo·minio·rabbitmq 설정
+├─ ci                     # Jenkinsfile
+├─ docs                   # 아키텍처 · 결정 기록 · 컨벤션
 ├─ compose.infra.yaml     # 공통 인프라(consul·관측성)만 실행
+├─ compose.data.yaml      # 데이터·메시징(mysql·mongo·minio·rabbitmq)
+├─ compose.ci.yaml        # Jenkins
 └─ compose.yaml           # 전체 스택(인프라 + 모든 서비스) 실행
 ```
 
@@ -84,8 +89,8 @@ docker compose up --build -d # 백그라운드
 **방법 A.도커로 실행**
 
 ```bash
-# 예: auth-service 개발 중인 경우
-docker compose up --build consul-1 consul-2 consul-3 config-server auth-service
+# 예: member-service 개발 중인 경우
+docker compose up --build consul-1 consul-2 consul-3 config-server member-service
 ```
 
 여기에도 `-d`를 붙이면 백그라운드로 실행됩니다. (종료는 `docker compose down`)
@@ -96,7 +101,7 @@ docker compose up --build consul-1 consul-2 consul-3 config-server auth-service
 docker compose up --build \
   consul-1 consul-2 consul-3 \
   prometheus grafana loki alloy zipkin \
-  config-server auth-service
+  config-server member-service
 ```
 
 **방법 B. 서비스만 IntelliJ에서 실행**
@@ -114,7 +119,7 @@ docker compose up --build \
 3. `ConfigServerApplication`을 먼저 실행한 뒤, 서비스의 Application 클래스를 실행합니다.
 
 > `compose.infra.yaml`에는 **config-server가 없습니다.** 모든 서비스의 공통 의존성이므로 IntelliJ에서 직접 실행해야 합니다.
-> 전체를 IDE에서 띄운다면 `config-server → auth → member → course → subscription → gateway` 순서를 권장합니다.
+> 전체를 IDE에서 띄운다면 `config-server → member → course → subscription → payment → gateway` 순서를 권장합니다.
 
 ## 확인 엔드포인트
 
@@ -123,10 +128,11 @@ docker compose up --build \
 | 담당                   | 직접 확인                                 | Gateway 경유                                |
 |----------------------|---------------------------------------|-------------------------------------------|
 | gateway              | http://localhost:8080/actuator/health | -                                         |
-| auth-service         | http://localhost:8081/actuator/health | http://localhost:8080/api/auth/ping       |
 | member-service       | http://localhost:8082/actuator/health | http://localhost:8080/api/members/ping    |
+| member-service (인증)  | http://localhost:8082/actuator/health | http://localhost:8080/api/auth/ping       |
 | course-service       | http://localhost:8083/actuator/health | http://localhost:8080/api/courses/ping    |
 | subscription-service | http://localhost:8084/actuator/health | http://localhost:8080/api/subscriptions/1 |
+| payment-service      | http://localhost:8085/actuator/health | http://localhost:8080/api/payments/subscriptions/1 |
 
 > `subscription-service`는 payment 도메인도 서빙합니다: http://localhost:8080/api/payments/subscriptions/1
 

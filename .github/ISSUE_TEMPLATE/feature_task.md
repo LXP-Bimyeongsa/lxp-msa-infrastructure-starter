@@ -18,10 +18,10 @@ assignees: []
 
 - [ ] gateway
 - [ ] config-server
-- [ ] auth-service
-- [ ] member-service
+- [ ] member-service (회원 · 인증)
 - [ ] course-service
 - [ ] subscription-service
+- [ ] payment-service
 
 ## 작업 항목
 
