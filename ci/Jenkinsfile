@@ -52,8 +52,11 @@ pipeline {
                         ).trim()
 
                         // 공용 파일이 바뀌면 어느 서비스가 영향받는지 알 수 없으므로 전체 빌드.
+                        // common-outbox는 subscription·payment·member가 컴파일 타임에 링크하므로
+                        // 여기 없으면 공통 모듈만 고친 커밋이 "변경 서비스 없음"으로 잡혀 그냥 통과한다.
                         def sharedTouched = diff.split('\n').any { path ->
                             path.startsWith('config-repo/') ||
+                            path.startsWith('common-outbox/') ||
                             path.startsWith('compose') ||
                             path == '.gitattributes'
                         }

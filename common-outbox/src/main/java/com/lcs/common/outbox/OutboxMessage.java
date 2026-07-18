@@ -1,4 +1,4 @@
-package com.lcs.payment.infrastructure.outbox;
+package com.lcs.common.outbox;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;

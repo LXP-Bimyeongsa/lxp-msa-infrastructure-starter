@@ -1,8 +1,8 @@
 package com.lcs.subscription.application;
 
+import com.lcs.common.outbox.OutboxWriter;
 import com.lcs.subscription.domain.Subscription;
 import com.lcs.subscription.domain.SubscriptionPlan;
-import com.lcs.subscription.infrastructure.outbox.OutboxWriter;
 import com.lcs.subscription.infrastructure.persistence.SubscriptionRepository;
 import java.util.Map;
 import org.slf4j.Logger;

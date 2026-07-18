@@ -1,11 +1,10 @@
-package com.lcs.payment.infrastructure.outbox;
+package com.lcs.common.outbox;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.stereotype.Component;
 
 // 도메인 트랜잭션 안에서 호출한다 — 비즈니스 저장과 outbox INSERT가 함께 커밋되거나 함께 롤백된다.
-@Component
+// 빈 등록은 OutboxAutoConfiguration이 한다 (소비 서비스의 컴포넌트 스캔이 이 패키지에 닿지 않는다).
 public class OutboxWriter {
 
     private final OutboxRepository outboxRepository;

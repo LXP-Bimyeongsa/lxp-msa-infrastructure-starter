@@ -1,1 +1,6 @@
 rootProject.name = 'payment-service'
+
+// 서비스마다 독립 Gradle 빌드를 유지한 채 공통 모듈만 끌어온다 (D-30).
+// 루트 멀티프로젝트로 합치면 Jenkins의 "변경된 서비스만 빌드"와
+// 서비스별 Dockerfile(각자 자기 디렉터리에서 gradle 실행)이 전부 깨진다.
+includeBuild '../common-outbox'

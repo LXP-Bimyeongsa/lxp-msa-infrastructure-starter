@@ -2,11 +2,11 @@ package com.lcs.subscription.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.lcs.common.outbox.OutboxMessage;
+import com.lcs.common.outbox.OutboxRepository;
 import com.lcs.subscription.domain.Subscription;
 import com.lcs.subscription.domain.SubscriptionPlan;
 import com.lcs.subscription.domain.SubscriptionStatus;
-import com.lcs.subscription.infrastructure.outbox.OutboxMessage;
-import com.lcs.subscription.infrastructure.outbox.OutboxRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
