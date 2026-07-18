@@ -39,6 +39,14 @@
       "arguments": {}
     },
     {
+      "name": "member.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
       "name": "lxp.dlx",
       "vhost": "/",
       "type": "topic",
@@ -76,6 +84,16 @@
       "arguments": {
         "x-dead-letter-exchange": "lxp.dlx",
         "x-dead-letter-routing-key": "payment.subscription-cancelled.dead"
+      }
+    },
+    {
+      "name": "subscription.member-withdrawn",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "lxp.dlx",
+        "x-dead-letter-routing-key": "subscription.member-withdrawn.dead"
       }
     },
     {
@@ -125,6 +143,14 @@
       "destination": "payment.subscription-cancelled",
       "destination_type": "queue",
       "routing_key": "subscription.cancelled",
+      "arguments": {}
+    },
+    {
+      "source": "member.events",
+      "vhost": "/",
+      "destination": "subscription.member-withdrawn",
+      "destination_type": "queue",
+      "routing_key": "member.withdrawn",
       "arguments": {}
     },
     {

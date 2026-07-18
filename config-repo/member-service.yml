@@ -14,6 +14,13 @@ spring:
       # 애플리케이션이 DDL을 만들면 실제 스키마와 코드가 조용히 어긋난다.
       ddl-auto: validate
     open-in-view: false
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_AMQP_PORT:5672}
+    username: ${RABBITMQ_USER:lxp}
+    password: ${RABBITMQ_PASSWORD:lxp}
+    # outbox 릴레이가 confirm을 기다렸다가 발행 완료를 마킹한다.
+    publisher-confirm-type: correlated
   cloud:
     consul:
       discovery:
@@ -21,6 +28,12 @@ spring:
         # HTTP 포트와 다르므로 메타데이터로 알려야 한다.
         metadata:
           grpc-port: "${GRPC_SERVER_PORT:9092}"
+
+outbox:
+  relay:
+    # 회원탈퇴 사가(D-31)의 MemberWithdrawn을 여기로 발행한다.
+    exchange: member.events
+    poll-interval-ms: 1000
 
 grpc:
   server:
