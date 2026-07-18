@@ -27,3 +27,6 @@
 | P-01 | PG사 연동 (실키는 사업자등록 필요) | 테스트 모드/Mock으로 시작, 실연동 시점 미정 |
 | P-02 | Consul 개발 모드 노드 수 (현재 3노드 `bootstrap-expect=3`) | D-14에 맞춰 1노드 개발 모드 전환 검토 |
 | P-03 | Chaos Monkey 적용 시점 | 사가·서킷브레이커 구현 완료 후 |
+| P-04 | 회원탈퇴 사가 범위 | 신규 다이어그램에 추가됨(회원탈퇴 → 구독해지). 구독해지 시 환불(payment 개입) 여부 미정. member.events exchange·큐 정의 필요 |
+| P-05 | 서킷브레이커 대상 동기 호출 확정 | 기존 설계는 subscription↔payment gRPC. 신규 다이어그램은 course↔subscription 사이에 표기 — 어느 호출인지 확정 필요 (사가는 비동기라 대상 아님) |
+| P-06 | Config Server 백엔드 | 현재 config-repo 디렉터리 native. 다이어그램은 git 소스로 표기 — git 백엔드 전환 여부 |
