@@ -77,6 +77,54 @@ public class KeycloakUserClient {
         return findUserId(email, token);
     }
 
+    /**
+     * 탈퇴 처리 — 계정을 비활성화하고 기존 세션을 끊는다 (D-32).
+     *
+     * <p>삭제가 아니라 비활성화인 이유 — 계정을 지우면 sub이 사라져서
+     * 이미 발행된 결제·환불 기록이 어느 계정의 것이었는지 추적할 수 없다.
+     * 감사 흔적은 남기고 인증만 막는다.
+     *
+     * <p>logout까지 부르는 이유 — enabled=false는 <b>새 토큰 발급</b>만 막는다.
+     * 이미 발행된 refresh token은 살아 있어서 그걸로 계속 갱신할 수 있다.
+     * logout이 세션과 refresh token을 무효화한다.
+     *
+     * <p>남는 구멍 — 이미 발행된 access token은 만료(exp)까지 유효하다.
+     * JWT 검증이 상태를 보지 않으므로 구조적으로 그렇다. 노출 시간은
+     * realm의 access token 수명이 상한이다.
+     *
+     * <p>실패하면 예외를 던진다. 삼키면 "DB상 탈퇴했는데 로그인은 되는" 상태가
+     * 조용히 남는다. 호출 측 트랜잭션이 롤백돼 탈퇴가 실패하는 편이 낫다 —
+     * 재시도하면 되고, 그 사이 회원은 여전히 정상 회원이다.
+     */
+    public void disableUser(String keycloakUserId) {
+        String token = fetchServiceAccountToken();
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.setBearerAuth(token);
+
+        try {
+            restTemplate.exchange(
+                    serverUrl + "/admin/realms/" + realm + "/users/" + keycloakUserId,
+                    org.springframework.http.HttpMethod.PUT,
+                    new HttpEntity<>(Map.of("enabled", false), headers), Void.class);
+        } catch (Exception e) {
+            throw new KeycloakUserUpdateException(
+                    "Keycloak 계정 비활성화 실패: userId=" + keycloakUserId, e);
+        }
+
+        try {
+            restTemplate.postForEntity(
+                    serverUrl + "/admin/realms/" + realm + "/users/" + keycloakUserId + "/logout",
+                    new HttpEntity<>(headers), Void.class);
+        } catch (Exception e) {
+            // 비활성화는 이미 됐다. 세션 정리 실패는 refresh token 수명만큼의
+            // 노출이라 탈퇴 자체를 되돌릴 만큼은 아니다 — 로그만 남긴다.
+            log.error("Keycloak 세션 종료 실패 — refresh token이 만료까지 살아 있음: userId={}",
+                    keycloakUserId, e);
+        }
+    }
+
     /** 보상 처리용. member_db 저장이 실패하면 Keycloak 쪽도 되돌린다 (P-10). */
     public void deleteUser(String keycloakUserId) {
         try {
