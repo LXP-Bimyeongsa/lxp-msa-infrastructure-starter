@@ -1,11 +1,10 @@
-package com.lcs.subscription.presentation;
+package com.lcs.payment.presentation;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-// payment-service를 subscription-service로 통합(임시). 추후 결제 도메인 분리 시 별도 서비스로 추출.
 @RestController
 @RequestMapping("/api/payments")
 public class PaymentController {
