@@ -165,8 +165,30 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/subscriptions/1
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/payments/subscriptions/1
 ```
 
+```bash
+# 6. 탈퇴 — 구독 해지와 환불이 사가로 이어집니다 (D-31)
+curl -X DELETE http://localhost:8080/api/members/me -H "Authorization: Bearer $TOKEN"
+
+# 7. 몇 초 뒤 살아 있던 구독이 전부 CANCELLED, 결제는 REFUNDED가 됩니다
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/subscriptions/1
+
+# 8. 탈퇴하면 Keycloak 계정이 비활성화돼 새 토큰을 받지 못합니다 (D-32)
+curl -X POST http://localhost:8180/realms/lxp/protocol/openid-connect/token \
+  -d "client_id=lxp-web" -d "grant_type=password" \
+  -d "username=demo@lxp.dev" -d "password=password1234"
+# => {"error":"invalid_grant","error_description":"Account disabled"}
+```
+
+> 이미 발행된 access token은 만료까지 유효합니다. JWT 검증이 상태를 보지 않기 때문이고,
+> 노출 상한은 realm의 `accessTokenLifespan`(300초)입니다. 완전 차단은 P-11에서 다룹니다.
+
 > 한글이 든 JSON을 Git Bash에서 `curl -d`로 보내면 CP949로 인코딩돼 400이 납니다.
 > UTF-8 파일에 담아 `--data-binary @file`로 보내세요.
+
+> **초기화 스크립트는 최초 기동에만 실행됩니다.** `infrastructure/mysql/init/*.sql`과
+> `infrastructure/keycloak/realm-lxp.json`을 고쳤다면 `docker compose down -v`가 필요합니다.
+> Keycloak은 realm이 이미 있으면 `Realm 'lxp' already exists. Import skipped`를 남기고
+> 조용히 건너뜁니다 — 재기동만 해서는 반영되지 않습니다.
 
 **동영상 업로드** — 파일은 서비스를 거치지 않고 클라이언트가 MinIO와 직접 주고받습니다.
 

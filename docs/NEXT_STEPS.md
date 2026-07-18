@@ -34,9 +34,12 @@
 - [x] course-service: 강의 메타 CRUD + MinIO Presigned URL 발급 (D-07)
 - [x] 정기 결제 스케줄러 (D-25~D-27)
 - [x] **Keycloak 이관** (D-20): 자체 JWT 발급 제거, gateway JWKS 검증, `password_hash` 삭제
-- [ ] 회원탈퇴 사가: member-service → subscription-service 구독해지 (D-16 환불 포함)
+- [x] **Outbox 구현 공통화** (D-30): `common-outbox` 모듈 + 컴포지트 빌드
+- [x] **회원탈퇴 사가** (D-31): member → subscription 구독해지 → 환불(D-16)
+- [x] **탈퇴 회원 인증 차단** (D-32): Keycloak 계정 비활성화 + 토큰 수명 300초
 - [ ] 서비스 간 호출 시 서비스 토큰 검증 (P-11) — Keycloak client credentials
 - [ ] 재생 URL 구독 여부 확인 (course → subscription, D-17 재검토 필요)
+- [ ] 정기 결제 재시도(dunning) 정책 (P-15)
 - [ ] README 스모크 절차 갱신 (인증이 Keycloak으로 바뀜)
 
 ## Step 5 — 관측 · 검증
