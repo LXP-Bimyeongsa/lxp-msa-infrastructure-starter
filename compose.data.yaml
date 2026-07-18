@@ -15,7 +15,9 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root}
     ports:
-      - "3306:3306"
+      # 호스트에 이미 MySQL이 떠 있으면 .env에서 MYSQL_PORT를 바꾼다.
+      # 컨테이너끼리는 mysql:3306으로 통신하므로 영향 없다.
+      - "${MYSQL_PORT:-3306}:3306"
     volumes:
       - mysql-data:/var/lib/mysql
       # *.sql은 최초 기동(데이터 디렉터리가 빈 상태)에만 파일명 순서대로 실행된다.
@@ -34,7 +36,7 @@ services:
     container_name: lxp-mongo
     command: ["--replSet", "rs0", "--bind_ip_all"]
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo-data:/data/db
       - ./infrastructure/mongo/init:/docker-entrypoint-initdb.d:ro
@@ -73,8 +75,8 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # 콘솔
+      - "${MINIO_PORT:-9000}:9000"           # S3 API
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"   # 콘솔
     volumes:
       - minio-data:/data
     networks: [lxp-net]
@@ -107,8 +109,8 @@ services:
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-lxp}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-lxp}
     ports:
-      - "5672:5672"     # AMQP
-      - "15672:15672"   # 관리 UI
+      - "${RABBITMQ_PORT:-5672}:5672"        # AMQP
+      - "${RABBITMQ_UI_PORT:-15672}:15672"   # 관리 UI
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
       - ./infrastructure/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
