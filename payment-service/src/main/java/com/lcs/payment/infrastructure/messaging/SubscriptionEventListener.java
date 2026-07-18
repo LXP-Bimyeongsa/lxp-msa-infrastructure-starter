@@ -25,7 +25,7 @@ public class SubscriptionEventListener {
     public void onSubscriptionCreated(String message,
                                       @Header(AmqpHeaders.MESSAGE_ID) String messageId) throws Exception {
         JsonNode payload = objectMapper.readTree(message);
-        paymentService.processPayment(
+        paymentService.processInitialPayment(
                 messageId,
                 payload.get("subscriptionId").asLong(),
                 payload.get("memberId").asLong(),
@@ -36,6 +36,7 @@ public class SubscriptionEventListener {
     @RabbitListener(queues = "payment.subscription-cancelled")
     public void onSubscriptionCancelled(String message) throws Exception {
         JsonNode payload = objectMapper.readTree(message);
-        paymentService.refund(payload.get("subscriptionId").asLong());
+        // 환불과 함께 예약된 다음 결제도 취소한다 (D-27)
+        paymentService.cancelBillingAndRefund(payload.get("subscriptionId").asLong());
     }
 }

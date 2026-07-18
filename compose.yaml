@@ -288,6 +288,10 @@ services:
       MYSQL_PASSWORD: payment
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_AMQP_PORT: 5672
+      # 정기 결제 (D-25). 데모로 짧은 주기를 보려면 .env에서 조정한다.
+      BILLING_PERIOD_DAYS: ${BILLING_PERIOD_DAYS:-30}
+      BILLING_SCHEDULER_ENABLED: ${BILLING_SCHEDULER_ENABLED:-true}
+      BILLING_SCHEDULER_INTERVAL_MS: ${BILLING_SCHEDULER_INTERVAL_MS:-60000}
     ports:
       - "8085:8085"
     volumes:

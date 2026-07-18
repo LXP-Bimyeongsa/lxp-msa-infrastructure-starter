@@ -9,5 +9,7 @@ public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     Optional<Payment> findByIdempotencyKey(String idempotencyKey);
 
+    boolean existsBySubscriptionIdAndBillingCycle(Long subscriptionId, Integer billingCycle);
+
     List<Payment> findBySubscriptionIdOrderByCreatedAtDesc(Long subscriptionId);
 }
