@@ -39,7 +39,7 @@
 - [x] **탈퇴 회원 인증 차단** (D-32): Keycloak 계정 비활성화 + 토큰 수명 300초
 - [x] **서비스 간 호출 시 서비스 토큰 검증** (D-33): REST 경로 — gateway 우회 차단
 - [x] **gRPC에도 서비스 토큰** (D-34) — 자격증명 거절은 서킷 집계 제외 + fail-closed
-- [ ] 탈퇴 회원의 잔여 access token 차단 (P-17) — introspection vs 상태 캐시
+- [x] **탈퇴 회원의 잔여 access token 차단** (D-35) — introspection + 30초 캐시
 - [ ] 재생 URL 구독 여부 확인 (course → subscription, D-17 재검토 필요)
 - [ ] 정기 결제 재시도(dunning) 정책 (P-15)
 - [ ] README 스모크 절차 갱신 (인증이 Keycloak으로 바뀜)

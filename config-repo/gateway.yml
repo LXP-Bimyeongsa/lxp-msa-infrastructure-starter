@@ -38,3 +38,10 @@ keycloak:
     token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8180/realms/lxp/protocol/openid-connect/token}
     client-id: ${KEYCLOAK_GATEWAY_CLIENT_ID:lxp-gateway}
     client-secret: ${KEYCLOAK_GATEWAY_CLIENT_SECRET:lxp-gateway-secret}
+  # 탈퇴·차단된 회원의 토큰을 만료 전에 걸러낸다 (D-35, P-17).
+  # 끄면 D-32의 잔여 구멍(토큰 수명만큼 통과)이 그대로 돌아온다.
+  introspection:
+    enabled: ${KEYCLOAK_INTROSPECTION_ENABLED:true}
+    uri: ${KEYCLOAK_INTROSPECTION_URI:http://localhost:8180/realms/lxp/protocol/openid-connect/token/introspect}
+    # 노출 창 = 이 값. 짧을수록 안전하고 Keycloak 부하가 는다.
+    cache-ttl-seconds: ${KEYCLOAK_INTROSPECTION_CACHE_TTL:30}
