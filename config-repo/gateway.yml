@@ -20,8 +20,11 @@ spring:
               uri: lb://course-service
               predicates:
                 - Path=/api/courses/**
-            # subscription-service가 payment 도메인도 서빙(임시 통합). 추후 분리 시 payment 라우트를 별도 서비스로 분리.
             - id: subscription-service
               uri: lb://subscription-service
               predicates:
-                - Path=/api/subscriptions/**,/api/payments/**
+                - Path=/api/subscriptions/**
+            - id: payment-service
+              uri: lb://payment-service
+              predicates:
+                - Path=/api/payments/**
