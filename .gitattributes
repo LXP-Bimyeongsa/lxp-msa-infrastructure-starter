@@ -1,2 +1,18 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# 리눅스 컨테이너 안에서 실행되는 파일은 반드시 LF로 체크아웃한다.
+# Windows에서 CRLF로 체크아웃되면 볼륨 마운트 시 셸이
+# "bad interpreter" 로 죽거나 초기화 스크립트가 조용히 실패한다.
+*.sh        text eol=lf
+*.sql       text eol=lf
+gradlew     text eol=lf
+Dockerfile  text eol=lf
+*.conf      text eol=lf
+
+# Windows 전용 스크립트는 CRLF 유지
+*.bat       text eol=crlf
+gradlew.bat text eol=crlf
+
+# 바이너리
+*.jar binary

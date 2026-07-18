@@ -1,0 +1,117 @@
+{
+  "rabbit_version": "3.13.0",
+  "users": [
+    {
+      "name": "lxp",
+      "password": "lxp",
+      "tags": ["administrator"]
+    }
+  ],
+  "vhosts": [
+    {
+      "name": "/"
+    }
+  ],
+  "permissions": [
+    {
+      "user": "lxp",
+      "vhost": "/",
+      "configure": ".*",
+      "write": ".*",
+      "read": ".*"
+    }
+  ],
+  "exchanges": [
+    {
+      "name": "subscription.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "payment.events",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    },
+    {
+      "name": "lxp.dlx",
+      "vhost": "/",
+      "type": "topic",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    {
+      "name": "payment.subscription-created",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "lxp.dlx",
+        "x-dead-letter-routing-key": "payment.subscription-created.dead"
+      }
+    },
+    {
+      "name": "subscription.payment-result",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {
+        "x-dead-letter-exchange": "lxp.dlx",
+        "x-dead-letter-routing-key": "subscription.payment-result.dead"
+      }
+    },
+    {
+      "name": "lxp.dead-letter",
+      "vhost": "/",
+      "durable": true,
+      "auto_delete": false,
+      "arguments": {}
+    }
+  ],
+  "bindings": [
+    {
+      "source": "subscription.events",
+      "vhost": "/",
+      "destination": "payment.subscription-created",
+      "destination_type": "queue",
+      "routing_key": "subscription.created",
+      "arguments": {}
+    },
+    {
+      "source": "payment.events",
+      "vhost": "/",
+      "destination": "subscription.payment-result",
+      "destination_type": "queue",
+      "routing_key": "payment.completed",
+      "arguments": {}
+    },
+    {
+      "source": "payment.events",
+      "vhost": "/",
+      "destination": "subscription.payment-result",
+      "destination_type": "queue",
+      "routing_key": "payment.failed",
+      "arguments": {}
+    },
+    {
+      "source": "lxp.dlx",
+      "vhost": "/",
+      "destination": "lxp.dead-letter",
+      "destination_type": "queue",
+      "routing_key": "#",
+      "arguments": {}
+    }
+  ],
+  "policies": [],
+  "parameters": [],
+  "global_parameters": [],
+  "topic_permissions": []
+}
