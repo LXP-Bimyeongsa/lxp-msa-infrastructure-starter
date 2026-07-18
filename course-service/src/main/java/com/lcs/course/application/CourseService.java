@@ -15,10 +15,14 @@ public class CourseService {
 
     private final CourseRepository courseRepository;
     private final VideoStorage videoStorage;
+    private final EntitlementService entitlementService;
 
-    public CourseService(CourseRepository courseRepository, VideoStorage videoStorage) {
+    public CourseService(CourseRepository courseRepository,
+                         VideoStorage videoStorage,
+                         EntitlementService entitlementService) {
         this.courseRepository = courseRepository;
         this.videoStorage = videoStorage;
+        this.entitlementService = entitlementService;
     }
 
     public Course create(Long instructorId, String title, String description) {
@@ -61,11 +65,22 @@ public class CourseService {
         return courseRepository.save(course);
     }
 
-    /** 재생용 서명 URL 발급. 업로드가 확인된 강의만 발급한다. */
-    public VideoStorage.PresignedUrl issuePlaybackUrl(String courseId) {
+    /**
+     * 재생용 서명 URL 발급. 업로드가 확인된 강의만 발급한다.
+     *
+     * <p>활성 구독이 있어야 발급한다 (D-36, P-16). 그 전에는 로그인만 하면
+     * 누구나 재생 URL을 받을 수 있었다 — 유료 강의가 사실상 무료였다.
+     *
+     * <p>강의 소유자(업로더)는 구독 없이도 받는다. 자기가 올린 것을 못 보는 것은
+     * 말이 안 되고, 업로드 확인(completeUpload)에도 재생이 필요하다.
+     */
+    public VideoStorage.PresignedUrl issuePlaybackUrl(String courseId, Long memberId) {
         Course course = findById(courseId);
         if (!course.hasVideo()) {
             throw new VideoNotUploadedException(courseId);
+        }
+        if (!course.isOwnedBy(memberId) && !entitlementService.canPlay(memberId)) {
+            throw new NoActiveSubscriptionException(memberId);
         }
         return videoStorage.issuePlaybackUrl(course.getVideoObjectKey());
     }

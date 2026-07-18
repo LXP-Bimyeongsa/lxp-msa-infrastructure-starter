@@ -5,3 +5,6 @@ internal-auth:
   issuer-uri: http://localhost:8180/realms/lxp
   jwk-set-uri: http://localhost:8180/realms/lxp/protocol/openid-connect/certs
   audience: lxp-internal
+
+# 구독 상태 이벤트 소비 (D-36) — 테스트는 브로커 없이 돈다.
+spring.rabbitmq.listener.simple.auto-startup: false

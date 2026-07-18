@@ -272,6 +272,11 @@ services:
       # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      # 구독 상태 이벤트 소비 (D-36)
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
+      RABBITMQ_USER: lxp
+      RABBITMQ_PASSWORD: lxp
     ports:
       - "8083:8083"
     volumes:
@@ -284,6 +289,9 @@ services:
       mongo:
         condition: service_healthy
       minio:
+        condition: service_healthy
+      # 구독 상태 이벤트 소비 (D-36)
+      rabbitmq:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:

@@ -1,6 +1,7 @@
 package com.lcs.course.presentation;
 
 import com.lcs.course.application.CourseNotFoundException;
+import com.lcs.course.application.NoActiveSubscriptionException;
 import com.lcs.course.application.VideoNotUploadedException;
 import com.lcs.course.infrastructure.storage.StorageUnavailableException;
 import java.time.Instant;
@@ -28,6 +29,13 @@ public class ApiExceptionHandler {
     @ExceptionHandler(VideoNotUploadedException.class)
     public ResponseEntity<Map<String, Object>> handleVideoMissing(VideoNotUploadedException e) {
         return build(HttpStatus.CONFLICT, e.getMessage());
+    }
+
+    @ExceptionHandler(NoActiveSubscriptionException.class)
+    public ResponseEntity<Map<String, Object>> handleNoSubscription(NoActiveSubscriptionException e) {
+        // 403이다. 강의는 존재하고 회원도 정상이며 구독만 없다 —
+        // 404로 감추면 사용자가 "구독하면 볼 수 있다"는 것을 알 수 없다.
+        return build(HttpStatus.FORBIDDEN, "활성 구독이 필요합니다.");
     }
 
     @ExceptionHandler(StorageUnavailableException.class)

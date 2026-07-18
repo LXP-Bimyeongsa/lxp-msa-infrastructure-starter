@@ -6,6 +6,16 @@ spring:
     mongodb:
       uri: mongodb://${MONGO_HOST:localhost}:${MONGO_DB_PORT:27017}/course_db?replicaSet=rs0
       auto-index-creation: true
+  # 구독 상태 이벤트 소비 (D-36). course는 발행하지 않으므로 outbox 릴레이는 없다.
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_AMQP_PORT:5672}
+    username: ${RABBITMQ_USER:lxp}
+    password: ${RABBITMQ_PASSWORD:lxp}
+    listener:
+      simple:
+        # 처리 실패 메시지는 재큐잉하지 않고 DLX로 보낸다. 무한 재시도 루프 방지.
+        default-requeue-rejected: false
 
 minio:
   bucket: ${MINIO_BUCKET:course-videos}

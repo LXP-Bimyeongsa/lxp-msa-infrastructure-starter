@@ -67,10 +67,12 @@ public class CourseController {
         return CourseResponse.from(courseService.completeUpload(courseId, memberId));
     }
 
-    /** 재생용 서명 URL. */
+    /** 재생용 서명 URL. 활성 구독이 있어야 발급된다 (D-36). */
     @GetMapping("/{courseId}/video/playback-url")
-    public PresignedUrlResponse issuePlaybackUrl(@PathVariable String courseId) {
-        return PresignedUrlResponse.from(courseService.issuePlaybackUrl(courseId));
+    public PresignedUrlResponse issuePlaybackUrl(
+            @RequestHeader("X-Member-Id") Long memberId,
+            @PathVariable String courseId) {
+        return PresignedUrlResponse.from(courseService.issuePlaybackUrl(courseId, memberId));
     }
 
     public record CreateRequest(
