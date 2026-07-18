@@ -1,1 +1,4 @@
 rootProject.name = 'course-service'
+
+// 서비스 간 호출 검증 공통 모듈 (D-33)
+includeBuild '../common-security'

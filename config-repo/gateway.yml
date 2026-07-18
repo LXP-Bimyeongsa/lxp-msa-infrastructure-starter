@@ -32,3 +32,9 @@ keycloak:
   issuer-uri: ${KEYCLOAK_ISSUER_URI:http://localhost:8180/realms/lxp}
   # JWKS는 gateway가 직접 가져오므로 내부에서 접근 가능한 주소여야 한다.
   jwk-set-uri: ${KEYCLOAK_JWK_SET_URI:http://localhost:8180/realms/lxp/protocol/openid-connect/certs}
+  # 서비스 토큰 발급 (D-33). 다운스트림에 "gateway를 거쳤다"를 증명하는 데 쓴다.
+  # 토큰 발급도 컨테이너 안에서 하므로 내부 주소다.
+  service-token:
+    token-uri: ${KEYCLOAK_TOKEN_URI:http://localhost:8180/realms/lxp/protocol/openid-connect/token}
+    client-id: ${KEYCLOAK_GATEWAY_CLIENT_ID:lxp-gateway}
+    client-secret: ${KEYCLOAK_GATEWAY_CLIENT_SECRET:lxp-gateway-secret}

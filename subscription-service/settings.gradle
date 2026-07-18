@@ -4,3 +4,6 @@ rootProject.name = 'subscription-service'
 // 루트 멀티프로젝트로 합치면 Jenkins의 "변경된 서비스만 빌드"와
 // 서비스별 Dockerfile(각자 자기 디렉터리에서 gradle 실행)이 전부 깨진다.
 includeBuild '../common-outbox'
+
+// 서비스 간 호출 검증 공통 모듈 (D-33)
+includeBuild '../common-security'

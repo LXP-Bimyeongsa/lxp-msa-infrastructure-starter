@@ -24,6 +24,8 @@ ext {
 dependencies {
     // Outbox 공통 모듈 (D-30). settings.gradle의 includeBuild로 소스에서 치환된다.
     implementation 'com.lcs:common-outbox:0.0.1-SNAPSHOT'
+    // 서비스 간 호출 검증 (D-33). gateway가 붙인 서비스 토큰을 요구한다.
+    implementation 'com.lcs:common-security:0.0.1-SNAPSHOT'
     implementation 'org.springframework.boot:spring-boot-starter-web'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-jpa'

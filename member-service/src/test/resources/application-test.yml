@@ -47,3 +47,10 @@ grpc:
     # 0 = 임의의 빈 포트. 고정 포트를 쓰면 같은 머신에서 컨테이너가 떠 있을 때
     # BindException으로 테스트가 통째로 실패한다.
     port: 0
+
+# 서비스 토큰 검증 (D-33) — 테스트는 HTTP를 거치지 않으므로 실제 조회는 일어나지 않는다.
+# 다만 JwtDecoder 빈 생성에 값이 필요해서 채워 둔다.
+internal-auth:
+  issuer-uri: http://localhost:8180/realms/lxp
+  jwk-set-uri: http://localhost:8180/realms/lxp/protocol/openid-connect/certs
+  audience: lxp-internal

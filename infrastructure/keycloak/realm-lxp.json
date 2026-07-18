@@ -60,6 +60,29 @@
       ]
     },
     {
+      "clientId": "lxp-gateway",
+      "name": "lxp-gateway (서비스 간 호출 증명용, D-33)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "lxp-gateway-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "internal-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "lxp-internal",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "member-service",
       "name": "member-service (Admin API 호출용)",
       "enabled": true,

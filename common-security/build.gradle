@@ -1,0 +1,48 @@
+// 서비스 간 호출 검증 공통 모듈 (D-33)
+//
+// common-outbox(D-30)와 같은 이유·같은 방식이다. 네 서비스가 똑같은
+// resource server 설정을 복사하게 두면 한 곳만 고쳐지는 날이 온다.
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.lcs'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    set('springBootVersion', '3.5.15')
+}
+
+dependencies {
+    api 'org.springframework.boot:spring-boot-starter-web'
+    api 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+// 소스는 UTF-8이다. 컴포지트 빌드로 포함되는 모듈은 소비 서비스의 빌드 설정을
+// 상속받지 않으므로 여기서 직접 고정해야 한다 (D-30에서 겪음).
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
