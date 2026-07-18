@@ -1,6 +1,7 @@
 package com.lcs.member.presentation;
 
 import com.lcs.member.application.DuplicateEmailException;
+import com.lcs.member.application.InvalidCredentialsException;
 import com.lcs.member.application.MemberNotFoundException;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -22,6 +23,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(MemberNotFoundException.class)
     public ResponseEntity<Map<String, Object>> handleNotFound(MemberNotFoundException e) {
         return build(HttpStatus.NOT_FOUND, e.getMessage());
+    }
+
+    @ExceptionHandler(InvalidCredentialsException.class)
+    public ResponseEntity<Map<String, Object>> handleInvalidCredentials(InvalidCredentialsException e) {
+        return build(HttpStatus.UNAUTHORIZED, e.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
