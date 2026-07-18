@@ -1,5 +1,6 @@
 package com.lcs.subscription.application;
 
+import com.lcs.subscription.infrastructure.grpc.MemberCallRejectedException;
 import com.lcs.subscription.infrastructure.grpc.MemberClient;
 import com.lcs.subscription.infrastructure.grpc.MemberNotFoundOnRemoteException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
@@ -36,7 +37,13 @@ public class MemberVerifier {
                     if (throwable instanceof MemberNotFoundOnRemoteException e) {
                         throw e;
                     }
-                    if (throwable instanceof CallNotPermittedException) {
+                    if (throwable instanceof MemberCallRejectedException) {
+                        // 상대는 멀쩡한데 우리 자격증명이 거절됐다 (D-34).
+                        // member-service 장애로 읽으면 엉뚱한 곳을 보게 되므로 따로 남긴다.
+                        // 서킷 집계에서는 빠지지만(CircuitBreakerConfiguration) 요청은 거절한다.
+                        log.error("서비스 토큰 거절 — 설정을 확인해야 한다: memberId={} cause={}",
+                                memberId, throwable.toString());
+                    } else if (throwable instanceof CallNotPermittedException) {
                         log.warn("서킷 열림 — member-service 확인 불가: memberId={}", memberId);
                     } else {
                         log.warn("member-service 확인 실패: memberId={} cause={}",

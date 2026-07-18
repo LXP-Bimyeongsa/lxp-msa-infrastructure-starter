@@ -1,12 +1,16 @@
 package com.lcs.subscription.infrastructure.grpc;
 
+import com.lcs.common.security.ServiceAccountTokenClient;
+import com.lcs.common.security.ServiceTokenUnavailableException;
 import com.lcs.member.grpc.GetMemberRequest;
 import com.lcs.member.grpc.GetMemberResponse;
 import com.lcs.member.grpc.MemberQueryServiceGrpc;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.Metadata;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
+import io.grpc.stub.MetadataUtils;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -25,16 +29,22 @@ public class MemberClient {
 
     private static final Logger log = LoggerFactory.getLogger(MemberClient.class);
 
+    private static final Metadata.Key<String> AUTHORIZATION =
+            Metadata.Key.of("authorization", Metadata.ASCII_STRING_MARSHALLER);
+
     private final DiscoveryClient discoveryClient;
+    private final ServiceAccountTokenClient tokenClient;
     private final String serviceId;
     private final long deadlineMs;
     // 채널은 비싸므로 대상 주소별로 재사용한다.
     private final ConcurrentHashMap<String, ManagedChannel> channels = new ConcurrentHashMap<>();
 
     public MemberClient(DiscoveryClient discoveryClient,
+                        ServiceAccountTokenClient tokenClient,
                         @Value("${grpc.client.member-service.service-id:member-service}") String serviceId,
                         @Value("${grpc.client.member-service.deadline-ms:2000}") long deadlineMs) {
         this.discoveryClient = discoveryClient;
+        this.tokenClient = tokenClient;
         this.serviceId = serviceId;
         this.deadlineMs = deadlineMs;
     }
@@ -42,13 +52,29 @@ public class MemberClient {
     /**
      * @return 회원이 활성 상태면 true
      * @throws MemberNotFoundOnRemoteException 회원이 없음 — 장애가 아니라 정상적인 답
+     * @throws MemberCallRejectedException 자격증명 거절 — 상대는 멀쩡하다
      * @throws MemberServiceUnavailableException 통신 실패 — 서킷브레이커가 셀 대상
      */
     public boolean isActiveMember(long memberId) {
         ServiceInstance instance = pickInstance();
         ManagedChannel channel = channelFor(instance);
+
+        // 토큰을 못 받으면 호출 자체를 시도하지 않는다 (D-34).
+        // 토큰 없이 보내봐야 상대가 거절할 뿐이고, 그 실패가 member-service의
+        // 문제인 것처럼 보이게 된다.
+        String serviceToken;
+        try {
+            serviceToken = tokenClient.token();
+        } catch (ServiceTokenUnavailableException e) {
+            throw new MemberCallRejectedException("서비스 토큰을 발급받지 못했습니다", e);
+        }
+
+        Metadata metadata = new Metadata();
+        metadata.put(AUTHORIZATION, "Bearer " + serviceToken);
+
         try {
             GetMemberResponse response = MemberQueryServiceGrpc.newBlockingStub(channel)
+                    .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(metadata))
                     // deadline이 없으면 상대가 응답하지 않을 때 스레드가 무한 대기한다.
                     .withDeadlineAfter(deadlineMs, TimeUnit.MILLISECONDS)
                     .getMember(GetMemberRequest.newBuilder().setMemberId(memberId).build());
@@ -57,6 +83,13 @@ public class MemberClient {
             if (e.getStatus().getCode() == Status.Code.NOT_FOUND) {
                 // "없는 회원"은 정상 응답이다. 서킷브레이커 실패로 세면 안 된다.
                 throw new MemberNotFoundOnRemoteException(memberId);
+            }
+            if (e.getStatus().getCode() == Status.Code.UNAUTHENTICATED
+                    || e.getStatus().getCode() == Status.Code.PERMISSION_DENIED) {
+                // 상대가 요청을 받아 판단하고 거절했다 = 상대는 멀쩡하다.
+                // 장애로 세면 시크릿이 틀렸을 때 멀쩡한 서비스의 서킷이 열린다.
+                throw new MemberCallRejectedException(
+                        "member-service가 서비스 토큰을 거절했습니다: " + e.getStatus().getCode(), e);
             }
             throw new MemberServiceUnavailableException(
                     "member-service gRPC 호출 실패: " + e.getStatus().getCode(), e);

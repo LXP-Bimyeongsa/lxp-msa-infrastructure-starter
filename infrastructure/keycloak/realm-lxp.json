@@ -83,6 +83,29 @@
       ]
     },
     {
+      "clientId": "subscription-service",
+      "name": "subscription-service (member gRPC 호출용, D-34)",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "subscription-service-secret",
+      "serviceAccountsEnabled": true,
+      "standardFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "protocol": "openid-connect",
+      "protocolMappers": [
+        {
+          "name": "internal-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.custom.audience": "lxp-internal",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
       "clientId": "member-service",
       "name": "member-service (Admin API 호출용)",
       "enabled": true,

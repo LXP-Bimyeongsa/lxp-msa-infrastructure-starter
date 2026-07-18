@@ -23,9 +23,15 @@ public class CircuitBreakerConfiguration {
                 .waitDurationInOpenState(Duration.ofSeconds(10))
                 .permittedNumberOfCallsInHalfOpenState(3)
                 .automaticTransitionFromOpenToHalfOpenEnabled(true)
-                // "회원 없음"은 원격이 정상 동작한 결과다. 실패로 세면
-                // 잘못된 요청이 몰릴 때 멀쩡한 서비스의 서킷이 열린다.
-                .ignoreExceptions(MemberNotFoundOnRemoteException.class)
+                // 둘 다 "원격이 요청을 받아 판단한 결과"다 — 원격이 살아 있다는 증거이므로
+                // 서킷 집계에서 뺀다. 실패로 세면 멀쩡한 서비스의 서킷이 열리고,
+                // 진짜 원인(잘못된 요청 / 우리 쪽 자격증명)이 서킷 로그에 묻힌다.
+                //   - 회원 없음: 잘못된 요청이 몰릴 때 (D-17)
+                //   - 자격증명 거절: 시크릿 설정이 틀렸을 때 (D-34)
+                // 집계에서 뺄 뿐, 결과는 여전히 fail-closed다 — 확인 못 한 구독은 만들지 않는다.
+                .ignoreExceptions(
+                        MemberNotFoundOnRemoteException.class,
+                        MemberCallRejectedException.class)
                 .build();
 
         return factory -> factory.configure(builder -> builder

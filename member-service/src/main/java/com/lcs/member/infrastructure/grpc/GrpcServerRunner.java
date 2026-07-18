@@ -20,22 +20,28 @@ public class GrpcServerRunner {
     private static final Logger log = LoggerFactory.getLogger(GrpcServerRunner.class);
 
     private final MemberQueryGrpcService memberQueryGrpcService;
+    private final ServiceTokenServerInterceptor serviceTokenInterceptor;
     private final int port;
     private Server server;
 
     public GrpcServerRunner(MemberQueryGrpcService memberQueryGrpcService,
+                            ServiceTokenServerInterceptor serviceTokenInterceptor,
                             @Value("${grpc.server.port:9092}") int port) {
         this.memberQueryGrpcService = memberQueryGrpcService;
+        this.serviceTokenInterceptor = serviceTokenInterceptor;
         this.port = port;
     }
 
     @EventListener(ApplicationReadyEvent.class)
     public void start() throws IOException {
         server = ServerBuilder.forPort(port)
+                // 서비스 토큰 검증 (D-34). 인터셉터를 서비스에 붙이지 않고 서버에 붙인다 —
+                // 나중에 서비스가 추가돼도 인증이 빠지는 일이 없다.
+                .intercept(serviceTokenInterceptor)
                 .addService(memberQueryGrpcService)
                 .build()
                 .start();
-        log.info("gRPC 서버 기동: port={}", port);
+        log.info("gRPC 서버 기동: port={} (서비스 토큰 필수)", port);
     }
 
     @PreDestroy
