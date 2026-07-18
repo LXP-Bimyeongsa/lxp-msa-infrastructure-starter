@@ -1,8 +1,8 @@
 package com.lcs.payment.application;
 
+import com.lcs.common.outbox.OutboxWriter;
 import com.lcs.payment.domain.BillingSchedule;
 import com.lcs.payment.domain.Payment;
-import com.lcs.payment.infrastructure.outbox.OutboxWriter;
 import com.lcs.payment.infrastructure.persistence.BillingScheduleRepository;
 import com.lcs.payment.infrastructure.persistence.PaymentRepository;
 import java.time.Duration;

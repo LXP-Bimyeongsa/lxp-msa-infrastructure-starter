@@ -1,0 +1,56 @@
+// Outbox 패턴 공통 모듈 (D-30)
+//
+// Boot 애플리케이션이 아니라 라이브러리다 — bootJar를 만들지 않으므로
+// org.springframework.boot 플러그인을 적용하지 않는다.
+// 버전 정렬만 필요하므로 dependency-management로 Boot BOM만 가져온다.
+plugins {
+    id 'java-library'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.lcs'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(17)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    set('springBootVersion', '3.5.15')
+}
+
+dependencies {
+    // api로 노출한다 — 소비 서비스가 OutboxWriter를 쓰려면 JPA·AMQP 타입이 필요하다.
+    // 어차피 소비 측도 같은 스타터를 직접 선언하고 있어 중복 부담은 없다.
+    api 'org.springframework.boot:spring-boot-starter-data-jpa'
+    api 'org.springframework.boot:spring-boot-starter-amqp'
+    // OutboxWriter가 ObjectMapper를 생성자로 받는다 — 공개 시그니처에 있으므로 api.
+    // JPA·AMQP 스타터는 jackson-databind를 끌고 오지 않는다(web 스타터가 가져온다).
+    api 'com.fasterxml.jackson.core:jackson-databind'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.boot:spring-boot-dependencies:${springBootVersion}"
+    }
+}
+
+// 소스는 UTF-8이다. 명시하지 않으면 javac이 빌드 호스트의 기본 인코딩을 쓰는데,
+// 한국어 Windows(CP949)에서는 주석의 한글이 깨져 컴파일이 실패한다.
+// 컴포지트 빌드로 포함되는 이 모듈은 소비 서비스의 빌드 설정을 상속받지 않으므로
+// 여기서 직접 고정해야 한다.
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

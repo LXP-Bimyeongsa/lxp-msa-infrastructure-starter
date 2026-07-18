@@ -2,9 +2,9 @@ package com.lcs.payment.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.lcs.common.outbox.OutboxRepository;
 import com.lcs.payment.domain.Payment;
 import com.lcs.payment.domain.PaymentStatus;
-import com.lcs.payment.infrastructure.outbox.OutboxRepository;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;

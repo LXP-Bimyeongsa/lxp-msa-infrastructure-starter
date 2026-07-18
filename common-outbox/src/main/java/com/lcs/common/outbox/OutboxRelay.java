@@ -1,4 +1,4 @@
-package com.lcs.payment.infrastructure.outbox;
+package com.lcs.common.outbox;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -7,16 +7,15 @@ import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 // 서비스 내부 릴레이(D-11). 미발행 outbox를 폴링해 RabbitMQ로 발행하고,
 // publisher confirm을 받은 뒤에만 발행 완료로 마킹한다.
 // confirm 전에 프로세스가 죽으면 재발행된다 — 그래서 소비자는 멱등해야 한다(at-least-once).
-@Component
-@ConditionalOnProperty(name = "outbox.relay.enabled", havingValue = "true", matchIfMissing = true)
+//
+// 빈 등록과 on/off 조건은 OutboxAutoConfiguration이 갖는다.
+// @Scheduled가 돌려면 소비 서비스에 @EnableScheduling이 있어야 한다.
 public class OutboxRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);

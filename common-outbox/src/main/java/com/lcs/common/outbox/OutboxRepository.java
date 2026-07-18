@@ -1,4 +1,4 @@
-package com.lcs.subscription.infrastructure.outbox;
+package com.lcs.common.outbox;
 
 import java.util.List;
 import java.util.UUID;
