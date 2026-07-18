@@ -1,0 +1,271 @@
+services:
+
+  consul-1:
+    image: hashicorp/consul:1.18
+    container_name: lxp-consul-1
+    command: agent -server -ui -node=consul-1 -bootstrap-expect=3 -client=0.0.0.0 -retry-join=consul-2 -retry-join=consul-3
+    ports:
+      - "8500:8500"
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  consul-2:
+    image: hashicorp/consul:1.18
+    container_name: lxp-consul-2
+    command: agent -server -node=consul-2 -bootstrap-expect=3 -client=0.0.0.0 -retry-join=consul-1 -retry-join=consul-3
+    networks: [lxp-net]
+
+  consul-3:
+    image: hashicorp/consul:1.18
+    container_name: lxp-consul-3
+    command: agent -server -node=consul-3 -bootstrap-expect=3 -client=0.0.0.0 -retry-join=consul-1 -retry-join=consul-2
+    networks: [lxp-net]
+
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: lxp-prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+    volumes:
+      - ./infrastructure/prometheus/prometheus-docker.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks: [lxp-net]
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: lxp-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - loki
+    networks: [lxp-net]
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: lxp-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./infrastructure/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    networks: [lxp-net]
+
+  alloy:
+    image: grafana/alloy:latest
+    container_name: lxp-alloy
+    command:
+      - run
+      - /etc/alloy/config.alloy
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+    volumes:
+      - ./infrastructure/alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - ./infrastructure/logs:/var/log/lxp:ro
+      - alloy-data:/var/lib/alloy/data
+    ports:
+      - "12345:12345"
+    depends_on:
+      - loki
+    networks: [lxp-net]
+
+  zipkin:
+    image: openzipkin/zipkin:3.4
+    container_name: lxp-zipkin
+    ports:
+      - "9411:9411"
+    networks: [lxp-net]
+
+
+  gateway:
+    build:
+      context: .
+      dockerfile: ./gateway/Dockerfile
+    container_name: lxp-gateway
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./infrastructure/logs:/logs
+    depends_on:
+      consul-1:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  config-server:
+    build:
+      context: .
+      dockerfile: ./config-server/Dockerfile
+    container_name: lxp-config-server
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SEARCH_LOCATIONS: file:/config-repo
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./infrastructure/logs:/logs
+      - ./config-repo:/config-repo:ro
+    depends_on:
+      consul-1:
+        condition: service_healthy
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8888/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  auth-service:
+    build:
+      context: .
+      dockerfile: ./auth-service/Dockerfile
+    container_name: lxp-auth-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./infrastructure/logs:/logs
+    depends_on:
+      consul-1:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  member-service:
+    build:
+      context: .
+      dockerfile: ./member-service/Dockerfile
+    container_name: lxp-member-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./infrastructure/logs:/logs
+    depends_on:
+      consul-1:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  course-service:
+    build:
+      context: .
+      dockerfile: ./course-service/Dockerfile
+    container_name: lxp-course-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8083:8083"
+    volumes:
+      - ./infrastructure/logs:/logs
+    depends_on:
+      consul-1:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  subscription-service:
+    build:
+      context: .
+      dockerfile: ./subscription-service/Dockerfile
+    container_name: lxp-subscription-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+    ports:
+      - "8084:8084"
+    volumes:
+      - ./infrastructure/logs:/logs
+    depends_on:
+      consul-1:
+        condition: service_healthy
+      config-server:
+        condition: service_healthy
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+
+networks:
+  lxp-net:
+    name: lxp-net
+    driver: bridge
+
+volumes:
+  grafana-data:
+  loki-data:
+  alloy-data:

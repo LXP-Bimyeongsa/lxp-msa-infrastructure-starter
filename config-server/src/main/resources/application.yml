@@ -1,0 +1,46 @@
+spring:
+  application:
+    name: config-server
+  profiles:
+    active: native
+  cloud:
+    config:
+      server:
+        native:
+          search-locations: ${CONFIG_SEARCH_LOCATIONS:file:../config-repo}
+    consul:
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        instance-id: ${spring.application.name}-${random.value}
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 10s
+
+server:
+  port: ${SERVER_PORT:8888}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: ${TRACING_SAMPLING_PROBABILITY:1.0}
+    baggage:
+      correlation:
+        fields: request-id,user-id
+      remote-fields: request-id,user-id
+  zipkin:
+    tracing:
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+logging:
+  file:
+    name: ${LOG_DIR:../infrastructure/logs}/${spring.application.name}.log
+  pattern:
+    correlation: "[%X{traceId:-},%X{spanId:-}] "

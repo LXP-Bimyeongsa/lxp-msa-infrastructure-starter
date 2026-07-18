@@ -1,0 +1,51 @@
+spring:
+  application:
+    name: gateway
+  config:
+    import: optional:configserver:${CONFIG_SERVER_URL:http://localhost:8888}
+  cloud:
+    consul:
+      host: ${CONSUL_HOST:localhost}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        instance-id: ${spring.application.name}-${random.value}
+        prefer-ip-address: true
+        health-check-path: /actuator/health
+        health-check-interval: 10s
+    gateway:
+      server:
+        webflux:
+          routes:
+            - id: auth-service
+              uri: lb://auth-service
+              predicates:
+                - Path=/api/auth/**
+            - id: member-service
+              uri: lb://member-service
+              predicates:
+                - Path=/api/members/**
+            - id: course-service
+              uri: lb://course-service
+              predicates:
+                - Path=/api/courses/**
+            # subscription-service가 payment 도메인도 서빙(임시 통합). 추후 분리 시 payment 라우트를 별도 서비스로 분리.
+            - id: subscription-service
+              uri: lb://subscription-service
+              predicates:
+                - Path=/api/subscriptions/**,/api/payments/**
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  file:
+    name: ${LOG_DIR:../infrastructure/logs}/${spring.application.name}.log
