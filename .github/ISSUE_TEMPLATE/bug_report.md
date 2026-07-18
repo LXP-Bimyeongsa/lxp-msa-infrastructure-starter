@@ -14,10 +14,10 @@ assignees: []
 
 - [ ] gateway
 - [ ] config-server
-- [ ] auth-service
-- [ ] member-service
+- [ ] member-service (회원 · 인증)
 - [ ] course-service
 - [ ] subscription-service
+- [ ] payment-service
 - [ ] 공통 인프라 (Consul, Config, Prometheus, Grafana, Loki)
 - [ ] 기타:
 

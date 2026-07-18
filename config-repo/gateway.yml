@@ -8,14 +8,11 @@ spring:
       server:
         webflux:
           routes:
-            - id: auth-service
-              uri: lb://auth-service
-              predicates:
-                - Path=/api/auth/**
+            # 인증은 member-service가 담당한다(D-04). Gateway는 JWT 검증만.
             - id: member-service
               uri: lb://member-service
               predicates:
-                - Path=/api/members/**
+                - Path=/api/members/**,/api/auth/**
             - id: course-service
               uri: lb://course-service
               predicates:
