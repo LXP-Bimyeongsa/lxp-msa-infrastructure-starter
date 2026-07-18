@@ -29,6 +29,8 @@
 | D-24 | 2026-07-18 | **ELB는 다이어그램에 "운영 구성"으로 표기만.** 로컬 스택에는 두지 않음 | 붙일 배포 대상(EC2/EKS)이 아직 없고, 실제 도입은 EC2 배포 파이프라인 구축(약 3일)과 월 $140 과금을 수반 | 실제 ALB 프로비저닝 / 로컬 nginx로 대체 |
 | D-25 | 2026-07-18 | **정기 결제 도입.** 결제 스케줄을 payment-service가 소유하고 스케줄러도 payment-service가 돌린다 | 최종 구조도가 `Scheduler → payment service`와 payment DB의 `UNIQUE(subscriptionId, billingCycle)`를 명시. 스케줄을 subscription이 갖고 있으면 payment가 매번 되물어야 해 동기 호출이 생긴다 | subscription-service가 스케줄 소유 후 갱신 이벤트 발행 |
 | D-26 | 2026-07-18 | 정기 결제 멱등키 = `(subscriptionId, billingCycle)` unique 제약 | 구조도 명시. 스케줄러가 다중 인스턴스로 돌거나 재실행돼도 같은 회차는 한 번만 청구된다. 이벤트 UUID 멱등키로는 "같은 회차의 다른 시도"를 막지 못한다 | 이벤트 ID만으로 멱등 처리 |
+| D-28 | 2026-07-19 | 내부 memberId를 Keycloak 사용자 속성 → `member_id` 클레임으로 전달 | Keycloak `sub`는 UUID인데 subscription/payment/course의 memberId는 Long이다. sub를 그대로 쓰면 3개 서비스의 컬럼 타입과 gRPC 계약까지 바꿔야 한다. 클레임으로 실어 보내면 파급이 gateway 한 곳에서 끝난다 | sub를 그대로 사용하고 전 서비스 타입 변경 |
+| D-29 | 2026-07-19 | MongoDB ReplicaSet 초기화는 `mongo-init` 잡에서만 수행 | `docker-entrypoint-initdb.d`의 mongod는 로컬 소켓에만 붙어 있어 `mongo:27017`을 자기 자신으로 인식하지 못하고 NodeNotFound로 종료된다. 실제로 컨테이너가 죽는 것을 확인 | initdb.d 스크립트 유지 |
 | D-27 | 2026-07-18 | 해지 시 예약된 다음 결제를 즉시 취소 | 해지했는데 스케줄이 남아 있으면 다음 주기에 청구된다. `SubscriptionCancelled` 소비 시 환불(D-16)과 함께 스케줄도 정리한다 | 스케줄 만료를 기다림 |
 | D-17 | 2026-07-18 | 서킷브레이커 = subscription → member gRPC 하나로 시작 | payment → subscription 동기 호출은 만들지 않는다 — `SubscriptionCreated` 이벤트에 필요한 데이터(plan·amount·memberId)를 전부 실어 보내므로(event-carried state transfer) 되물을 일이 없음. 동기 호출을 추가하면 이벤트로 끊은 결합을 다시 묶는 셈 | payment→subscription 동기 조회 |
 
@@ -44,9 +46,11 @@
 | P-06 | Config Server 백엔드 | 현재 config-repo 디렉터리 native. 다이어그램은 git 소스로 표기 — git 백엔드 전환 여부 |
 | P-07 | 배포 대상 (EC2 / EKS / 로컬) | 미정. ELB 실제 도입(D-24)의 전제. EC2+compose 약 3일, EKS 1~2주 |
 | P-08 | ELB 도입 시 필수 대응 | 헬스체크 경로를 `/actuator/health`로 지정(기본 `/`는 404라 정상 인스턴스를 죽은 것으로 판단), gateway에 `forward-headers-strategy: framework`(미설정 시 클라이언트 IP가 전부 ELB IP로 기록됨) |
-| P-09 | Keycloak issuer URL 통일 | 토큰의 `iss`는 클라이언트 접속 주소 기준인데 gateway는 내부 주소로 검증하려 든다. `KC_HOSTNAME`과 gateway `issuer-uri`를 외부 주소 하나로 맞추지 않으면 401만 반복된다 |
+| ~~P-09~~ | Keycloak issuer URL 통일 | **해결(D-20)**: JWKS 조회는 내부 주소, issuer 검증은 외부 주소로 분리 |
+| ~~P-10~~ | Keycloak ↔ member_db 가입 정합성 | **해결(D-20)**: Keycloak 생성 실패 시 트랜잭션 롤백, 연결 실패 시 Keycloak 사용자 보상 삭제 |
 | P-11 | **서비스 간 호출 시 서비스 토큰 검증** (Gateway 우회 차단) | 최종 구조도 신규 항목. 현재는 다운스트림이 `X-Member-Id` 헤더를 그대로 신뢰하므로, 네트워크에 접근 가능한 누구나 gateway를 건너뛰고 서비스를 직접 호출할 수 있다. Keycloak client credentials 방식이 자연스러움 → D-20 이후 |
 | P-12 | Message Relay 표기 | 구조도는 별도 컴포넌트로 그렸으나 구현은 각 서비스 내부 릴레이(D-11). 외부 릴레이는 4개 서비스 DB에 모두 접속해야 해 DB per service·MySQL 계정 격리와 충돌. **구현은 D-11 유지**, 그림을 "각 서비스 내부 릴레이"로 읽는다 |
 | P-13 | inbox 패턴 도입 여부 | 구조도의 `in/out box` 중 inbox는 미구현. 현재 중복 소비는 payment 멱등키 + subscription 상태 확인으로 방어. inbox 테이블을 실제로 둘지 미정 |
 | P-14 | MySQL Replication ×3 / RabbitMQ ×3 Quorum / Mongo RS ×3 | 구조도의 운영 목표. 현재는 전부 단일 노드(D-09·D-10·D-14). 컨테이너 +8개 규모라 HA 검증 단계에서 별도 프로파일로 |
-| P-10 | Keycloak ↔ member_db 가입 정합성 | Keycloak 사용자 생성과 member_db 프로필 생성은 두 시스템에 걸친 쓰기다. 한쪽만 성공하는 경우의 보상 처리 필요 |
+| P-15 | 정기 결제 실패 시 재시도 정책 | 현재는 1회 실패 시 스케줄 즉시 중단. 실무의 dunning(수 회 재시도 후 중단)이 필요한지 미정 |
+| P-16 | 재생 URL 접근 제어 | 현재 로그인만 하면 누구나 재생 URL을 받는다. 구독 확인을 넣으려면 course → subscription 동기 호출이 생겨 서킷브레이커 대상이 늘어난다(D-17 재검토) |

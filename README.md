@@ -131,17 +131,67 @@ docker compose up --build \
 | member-service       | http://localhost:8082/actuator/health | http://localhost:8080/api/members/ping    |
 | member-service (인증)  | http://localhost:8082/actuator/health | http://localhost:8080/api/auth/ping       |
 | course-service       | http://localhost:8083/actuator/health | http://localhost:8080/api/courses/ping    |
-| subscription-service | http://localhost:8084/actuator/health | http://localhost:8080/api/subscriptions/1 |
-| payment-service      | http://localhost:8085/actuator/health | http://localhost:8080/api/payments/subscriptions/1 |
+| subscription-service | http://localhost:8084/actuator/health | http://localhost:8080/api/subscriptions/{id} |
+| payment-service      | http://localhost:8085/actuator/health | http://localhost:8080/api/payments/subscriptions/{id} |
 
-> `subscription-service`는 payment 도메인도 서빙합니다: http://localhost:8080/api/payments/subscriptions/1
+> ⚠️ **`/ping`과 회원 가입을 제외한 모든 `/api/**`는 토큰이 필요합니다.** 아래 스모크 테스트를 참고하세요.
+
+## 스모크 테스트
+
+인증은 **Keycloak**이 담당합니다. 토큰을 받아 API를 호출하는 전체 흐름입니다.
+
+```bash
+# 1. 가입 — member_db 프로필 + Keycloak 사용자가 함께 생성됩니다 (공개 엔드포인트)
+curl -X POST http://localhost:8080/api/members \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"demo@lxp.dev","password":"password1234","name":"Demo"}'
+
+# 2. Keycloak에서 토큰 발급 (gateway가 아니라 Keycloak으로 직접)
+TOKEN=$(curl -s -X POST http://localhost:8180/realms/lxp/protocol/openid-connect/token \
+  -d "client_id=lxp-web" -d "grant_type=password" \
+  -d "username=demo@lxp.dev" -d "password=password1234" \
+  | sed 's/.*"access_token":"\([^"]*\)".*/\1/')
+
+# 3. 토큰 없이 접근 → 401
+curl -i http://localhost:8080/api/subscriptions/1
+
+# 4. 구독 생성 → 사가 시작 (PENDING)
+curl -X POST http://localhost:8080/api/subscriptions \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"plan":"BASIC"}'
+
+# 5. 몇 초 뒤 ACTIVE로 바뀌고 결제가 APPROVED로 남습니다
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/subscriptions/1
+curl -H "Authorization: Bearer $TOKEN" http://localhost:8080/api/payments/subscriptions/1
+```
+
+> 한글이 든 JSON을 Git Bash에서 `curl -d`로 보내면 CP949로 인코딩돼 400이 납니다.
+> UTF-8 파일에 담아 `--data-binary @file`로 보내세요.
+
+**동영상 업로드** — 파일은 서비스를 거치지 않고 클라이언트가 MinIO와 직접 주고받습니다.
+
+```bash
+CID=$(curl -s -X POST http://localhost:8080/api/courses \
+  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"title":"Demo","description":"d"}' | sed 's/.*"courseId":"\([^"]*\)".*/\1/')
+
+URL=$(curl -s -X POST "http://localhost:8080/api/courses/$CID/video/upload-url" \
+  -H "Authorization: Bearer $TOKEN" | sed 's/.*"url":"\([^"]*\)".*/\1/')
+
+curl -X PUT -T video.mp4 "$URL"                      # MinIO로 직접 업로드
+curl -X POST "http://localhost:8080/api/courses/$CID/video/complete" \
+  -H "Authorization: Bearer $TOKEN"                  # 서버가 객체 존재를 확인한 뒤 완료 처리
+```
 
 **공통 인프라**
 
 | 대상             | 주소                                    |
 |----------------|---------------------------------------|
 | Config Server  | http://localhost:8888/gateway/default |
+| Keycloak       | http://localhost:8180 (admin / admin) |
 | Consul UI      | http://localhost:8500                 |
+| MinIO 콘솔      | http://localhost:9001 (minioadmin / minioadmin) |
+| RabbitMQ UI    | http://localhost:15672 (lxp / lxp)    |
 | Prometheus     | http://localhost:9090                 |
 | Grafana        | http://localhost:3000 (admin / admin) |
 | Loki readiness | http://localhost:3100/ready           |
@@ -151,20 +201,23 @@ docker compose up --build \
 
 포함:
 
-- Gateway 라우팅
-- Config Server Native backend
-- Consul 서비스 등록 및 탐색
-- Actuator / Prometheus metrics
-- Grafana 데이터소스 자동 설정
-- Loki + Alloy 로그 수집
-- Zipkin 분산 트레이싱
-- 각 서비스의 최소 테스트 API
+- Gateway 라우팅 + **Keycloak(OIDC) 토큰 검증** — 검증 통과 시 `X-Member-Id`를 다운스트림에 전달
+- Config Server Native backend / Consul 서비스 등록 및 탐색
+- **회원 가입** (member_db 프로필 + Keycloak 사용자 동시 생성, 실패 시 보상)
+- **강의 CRUD + MinIO Presigned URL** — 동영상은 클라이언트가 MinIO와 직접 송수신
+- **구독-결제 사가** (Outbox → RabbitMQ 코레오그래피, 환불 보상 포함)
+- **정기 결제 스케줄러** — `(subscriptionId, billingCycle)` 멱등키
+- **gRPC + 서킷브레이커** (subscription → member, fail-closed)
+- 서비스별 DB — MySQL 스키마 분리 + MongoDB
+- Actuator / Prometheus / Grafana / Loki + Alloy / Zipkin
 
 미포함:
 
 - 기존 모놀리식 도메인 코드
-- JWT 실제 검증
-- 서비스별 DB
-- gRPC 구현
-- Kafka 또는 RabbitMQ
-- 실제 결제 로직
+- **실제 PG 연동** — 결제는 mock (금액 > 0이면 승인)
+- 회원탈퇴 사가
+- 서비스 간 호출 시 서비스 토큰 검증 (현재 다운스트림은 `X-Member-Id`를 신뢰)
+- 재생 URL 구독 여부 확인
+- HA 구성 (RabbitMQ·MongoDB·Consul 전부 단일 노드)
+
+> 결정 배경은 [docs/DECISIONS.md](docs/DECISIONS.md), 진행 상황은 [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) 참고.
