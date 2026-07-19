@@ -36,7 +36,10 @@ public class SubscriptionStatusListener {
         switch (routingKey) {
             case "subscription.activated" -> entitlementService.grant(subscriptionId, memberId);
             case "subscription.cancelled" -> entitlementService.revoke(subscriptionId, memberId);
-            default -> log.warn("알 수 없는 라우팅 키: {}", routingKey);
+            // 메시지는 여기서 ack되고 사라진다. 라우팅 키만 남기면 "어느 구독의
+            // 권한이 반영되지 않았나"를 되짚을 수 없다.
+            default -> log.warn("알 수 없는 라우팅 키, 메시지 무시: routingKey={} subscriptionId={} memberId={}",
+                    routingKey, subscriptionId, memberId);
         }
     }
 }

@@ -41,13 +41,20 @@ public class MemberVerifier {
                         // 상대는 멀쩡한데 우리 자격증명이 거절됐다 (D-34).
                         // member-service 장애로 읽으면 엉뚱한 곳을 보게 되므로 따로 남긴다.
                         // 서킷 집계에서는 빠지지만(CircuitBreakerConfiguration) 요청은 거절한다.
-                        log.error("서비스 토큰 거절 — 설정을 확인해야 한다: memberId={} cause={}",
-                                memberId, throwable.toString());
+                        // toString()이 아니라 예외 자체를 넘긴다 — 이 예외는
+                        // StatusRuntimeException을 감싸고 있고, gRPC 상태와 서버가 보낸
+                        // 메시지는 그 cause에만 있다. 잘라내면 "설정을 확인하라"는
+                        // 말만 남고 무엇을 확인할지가 사라진다.
+                        log.error("서비스 토큰 거절 — 설정을 확인해야 한다: memberId={}",
+                                memberId, throwable);
                     } else if (throwable instanceof CallNotPermittedException) {
+                        // 서킷이 열린 것은 이미 아래 분기에서 원인을 남긴 뒤의 결과다.
+                        // 여기서 스택트레이스를 또 찍으면 열려 있는 동안 로그만 채운다.
                         log.warn("서킷 열림 — member-service 확인 불가: memberId={}", memberId);
                     } else {
-                        log.warn("member-service 확인 실패: memberId={} cause={}",
-                                memberId, throwable.toString());
+                        // 진짜 통신 장애가 들어오는 곳이다. 원인 없이 warn 한 줄이면
+                        // 서킷이 왜 열렸는지 되짚을 근거가 남지 않는다.
+                        log.warn("member-service 확인 실패: memberId={}", memberId, throwable);
                     }
                     throw new MemberVerificationUnavailableException();
                 });

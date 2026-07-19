@@ -61,7 +61,7 @@ public class PgHttpClient implements PaymentGateway {
         } catch (RestClientException e) {
             // 타임아웃·연결 실패 — 승인됐는지 알 수 없다.
             // 실패로 단정하지 않고 "모른다"로 다룬다(PgApproval.unreachable 주석 참고).
-            log.error("PG 통신 실패 — 승인 여부 불명: orderId={} cause={}", orderId, e.getMessage());
+            log.error("PG 통신 실패 — 승인 여부 불명: orderId={}", orderId, e);
             return PgApproval.unreachable();
         }
     }
@@ -78,7 +78,10 @@ public class PgHttpClient implements PaymentGateway {
             // 거절인 것은 분명한데 본문을 못 읽었다. 재시도 가능 여부를 모르므로
             // 재시도 가능으로 둔다 — 영구 거절을 재시도하는 낭비가,
             // 일시적 거절을 영구로 단정해 구독을 끊는 것보다 낫다.
-            log.warn("PG 거절 응답 파싱 실패: orderId={} status={}", orderId, status);
+            // parseFailure를 넘긴다. 이 경로는 retryable=true라 조용히 재청구를
+            // 반복하는데, 원인(규격 변경·빈 본문·타입 불일치)을 안 남기면
+            // 왜 계속 파싱이 깨지는지 영영 알 수 없다.
+            log.warn("PG 거절 응답 파싱 실패: orderId={} status={}", orderId, status, parseFailure);
             return PgApproval.declined("UNPARSEABLE", true);
         }
     }

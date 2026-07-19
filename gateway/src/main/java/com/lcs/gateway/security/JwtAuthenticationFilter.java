@@ -87,7 +87,11 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
                                 // 섞으면 Keycloak 장애가 "당신 토큰이 잘못됐다"로 보여
                                 // 사용자가 재로그인을 시도하고 그것마저 실패한다.
                                 .onErrorResume(IntrospectionUnavailableException.class, e -> {
-                                    log.error("introspection 실패 — 요청을 거부한다: {}", e.getMessage());
+                                    // 예외를 통째로 넘긴다. getMessage()는 생성자에 하드코딩된
+                                    // 문자열이라 그것만 찍으면 매번 같은 줄이 나오고, 진짜 원인
+                                    // (연결 거부·타임아웃·401·응답 파싱 실패)은 cause에만 있다.
+                                    log.error("introspection 실패 — 요청을 거부한다: path={}",
+                                            request.getURI().getPath(), e);
                                     return serviceUnavailable(exchange);
                                 }))
                         // 토큰은 유효하나 member_id 속성이 없는 계정 = 가입 절차 미완.
@@ -107,7 +111,10 @@ public class JwtAuthenticationFilter implements GlobalFilter, Ordered {
         return serviceTokenProvider.token()
                 .map(Optional::of)
                 .onErrorResume(e -> {
-                    log.error("서비스 토큰 발급 실패 — 요청을 거부한다: {}", e.getMessage());
+                    // 여기서 원인을 잃으면 "왜 토큰을 못 받았나"(시크릿 오류인지 Keycloak
+                    // 장애인지)를 알 수 없다. 둘은 대응이 완전히 다르다.
+                    log.error("서비스 토큰 발급 실패 — 요청을 거부한다: path={}",
+                            request.getURI().getPath(), e);
                     return Mono.just(Optional.<String>empty());
                 })
                 .flatMap(token -> token
