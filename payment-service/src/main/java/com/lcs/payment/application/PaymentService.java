@@ -91,6 +91,15 @@ public class PaymentService {
 
         if (result.approved()) {
             schedule.advance(billingPeriod);
+        } else if (result.isDuplicateCycle()) {
+            // 이 회차는 이미 청구돼 있다 — 다른 인스턴스가 먼저 집었거나 재실행됐다.
+            // 거절이 아니므로 스케줄을 끄면 안 된다. 끄면 그 구독은 다시는 청구되지 않는다 (D-41).
+            //
+            // advance()는 이 사본이 낡았어도 안전하다. 먼저 처리한 쪽과 같은 상태에서
+            // 같은 계산을 하므로(회차 +1, 예정일 + 주기) 결과가 같은 값으로 수렴한다.
+            schedule.advance(billingPeriod);
+            log.info("이미 청구된 회차 — 다음 회차로 진행: subscriptionId={} cycle={}",
+                    schedule.getSubscriptionId(), cycle);
         } else if (lastChance || !result.retryable()) {
             // 재시도를 다 썼거나, 재시도해도 소용없는 거절이다 (D-39).
             // 분실·도난 카드를 3일씩 3번 더 긁어봐야 같은 답이 오고,
@@ -163,9 +172,11 @@ public class PaymentService {
         // 트랜잭션이 통째로 롤백되는 것이 맞는 동작이고,
         // 스케줄러가 그 건만 로그로 남기고 다음 건으로 넘어간다.
         if (paymentRepository.existsBySubscriptionIdAndBillingCycle(subscriptionId, cycle)) {
-            log.info("이미 청구된 회차, 무시: subscriptionId={} cycle={}", subscriptionId, cycle);
-            // 재시도 대상이 아니다 — 이미 처리된 회차다.
-            return PgApproval.declined("DUPLICATE_CYCLE", false);
+            log.info("이미 청구된 회차, PG 호출 없이 건너뜀: subscriptionId={} cycle={}", subscriptionId, cycle);
+            // 거절이 아니라 멱등 스킵으로 돌려준다 (D-41).
+            // declined(...,false)로 두면 호출 측의 "재시도 불가 거절" 분기에 걸려
+            // 정상 동작이 스케줄을 중단시킨다.
+            return PgApproval.duplicateCycle();
         }
 
         // PG에 실제로 승인을 요청한다 (D-39). 멱등키를 함께 넘기므로

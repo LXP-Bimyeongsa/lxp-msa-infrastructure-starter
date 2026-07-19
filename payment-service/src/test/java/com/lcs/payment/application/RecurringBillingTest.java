@@ -81,7 +81,7 @@ class RecurringBillingTest {
     }
 
     @Test
-    @DisplayName("같은 회차를 두 번 청구하면 두 번째는 DB 제약으로 막힌다 (D-26)")
+    @DisplayName("같은 회차를 두 번 청구하면 두 번째는 막히되, 스케줄은 살아서 다음 회차로 간다 (D-26·D-41)")
     void sameCycleChargedOnlyOnce() {
         paymentService.processInitialPayment(UUID.randomUUID().toString(), 103L, 1L, 29_000L);
         BillingSchedule schedule = billingScheduleRepository.findById(103L).orElseThrow();
@@ -97,6 +97,12 @@ class RecurringBillingTest {
                 .filter(p -> p.getBillingCycle() == 2)
                 .count();
         assertThat(cycle2Count).isEqualTo(1);
+
+        // 중복을 걸러낸 것은 정상 동작이지 결제 실패가 아니다.
+        // 여기서 스케줄이 꺼지면 그 구독은 다시는 청구되지 않는다.
+        BillingSchedule after = billingScheduleRepository.findById(103L).orElseThrow();
+        assertThat(after.isActive()).isTrue();
+        assertThat(after.getNextBillingCycle()).isEqualTo(3);
     }
 
     @Test
