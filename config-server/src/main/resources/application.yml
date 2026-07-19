@@ -16,6 +16,11 @@ spring:
         prefer-ip-address: true
         health-check-path: /actuator/health
         health-check-interval: 10s
+        # config-repo/application.yml에도 같은 값이 있지만 여기 다시 적는다 (D-43).
+        # config-server는 자기 자신에게서 설정을 받아올 수 없어, 공용 파일에만 두면
+        # 6개 서비스 중 config-server 하나만 조용히 빠진다.
+        query-passing: true
+        health-check-critical-timeout: 1m
 
 server:
   port: ${SERVER_PORT:8888}
