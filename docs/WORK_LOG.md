@@ -501,3 +501,54 @@ D-37 이전이라면 첫 줄에서 이미 CANCELLED였다.
 ### 남은 것
 
 - Jenkins 파이프라인 검증
+
+---
+
+## 2026-07-19 (이어서) — Jenkins 파이프라인 검증 (Step 3)
+
+PR #31. 유일하게 미검증이던 영역이었고, **띄우자마자 버그 4개가 나왔다.**
+
+파이프라인을 작성한 뒤 "문법은 맞으니 되겠지"로 남겨뒀던 것이 그대로 드러났다.
+이 프로젝트에서 이미 두 번 겪은 패턴이다.
+
+### 나온 것
+
+**① `SERVICES`에 없어진 `auth-service`가 남아 있었다.**
+D-04에서 member-service에 흡수했는데 목록을 고치지 않았다.
+"전체 빌드" 경로로 들어가면 `dir('auth-service')`가 없는 디렉터리를 열어 죽는다.
+
+**② `common-security/`가 변경 감지에서 빠져 있었다.**
+`common-outbox/`는 PR #20에서 넣었는데, PR #24에서 `common-security`를 만들 때
+같은 곳에 추가하는 것을 잊었다. **공통 모듈만 고친 커밋이 "변경 서비스 없음"으로
+잡혀 아무것도 빌드하지 않고 통과한다** — 깨져도 알 수 없다.
+
+하나씩 나열하는 방식 자체가 원인이라 `common-*` 접두사로 묶었다.
+`infrastructure/`도 함께 넣었다 — SQL·RabbitMQ 정의가 바뀌면 서비스가 영향받는다.
+
+**③ Jenkins 이미지에 docker CLI가 없었다.**
+compose 주석에는 "docker CLI 설치를 위해 user: root"라고 적혀 있는데
+정작 설치하는 부분이 없다. `docker: not found`로 이미지 빌드 단계만 실패한다.
+`ci/Dockerfile`로 CLI만 얹었다(데몬은 넣지 않는다 — DooD 구성이라 불필요).
+
+**④ `payment-service/gradlew`에 실행 권한이 없었다.**
+git 인덱스 모드가 6개 중 그것 하나만 `100644`였다.
+`sh: ./gradlew: Permission denied`.
+
+이게 특히 고약한 이유 — **로컬 Windows에서도, Dockerfile에서도 드러나지 않는다.**
+Windows는 실행 비트를 신경 쓰지 않고, Dockerfile은 `./gradlew`가 아니라
+이미지에 든 `gradle`을 쓴다. `./gradlew`를 부르는 곳은 Jenkins뿐이다.
+
+### 검증
+
+Jenkins 컨테이너 안에서 파이프라인이 실제로 하는 일을 그대로 실행했다.
+
+- `git clone` → 변경 파일 목록 추출 → 공용 파일 감지가 "전체 빌드"로 올바르게 걸림
+- 컨테이너 안에서 `docker ps`로 호스트 Docker 조종 확인
+- `./gradlew clean build`가 컨테이너 안에서 성공 —
+  `:common-outbox:jar` → `:bootJar` → 테스트까지 통과.
+  **컴포지트 빌드(D-30)가 CI 환경에서도 동작한다는 것을 처음 확인했다.**
+
+### 남은 것
+
+- 로컬 Jenkins ↔ GitHub 폴링 연동 (Step 3 마지막 항목)
+- PG 실연동(P-01), HA 구성(P-14), 배포 대상(P-07)
