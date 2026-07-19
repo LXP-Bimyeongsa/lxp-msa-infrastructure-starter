@@ -1,0 +1,67 @@
+# Jenkins Configuration as Code (D-40)
+#
+# 잡·보안·폴링 주기를 전부 여기서 정의한다. UI로 만들면 컨테이너 볼륨을 지우는 순간
+# 사라지고, 저장소에는 아무 흔적도 남지 않는다. 이 프로젝트에서 이미 두 번
+# "볼륨 지우니 설정이 날아감"을 겪었다(MySQL init, Keycloak realm).
+
+jenkins:
+  systemMessage: "LXP MSA 빌드 파이프라인 — 설정은 ci/jenkins.yaml이 소유한다"
+
+  # 로컬 학습용이라 Jenkins 자체 계정을 쓴다.
+  # 비밀번호는 환경변수로 주입한다 — 여기 적으면 저장소에 평문으로 남는다.
+  securityRealm:
+    local:
+      allowsSignup: false
+      users:
+        - id: "${JENKINS_ADMIN_ID}"
+          password: "${JENKINS_ADMIN_PASSWORD}"
+
+  authorizationStrategy:
+    loggedInUsersCanDoAnything:
+      allowAnonymousRead: false
+
+  # 빌드는 컨트롤러에서 돈다. 에이전트를 붙이면 docker.sock 공유를
+  # 에이전트까지 확장해야 해서, 로컬 단일 노드에서는 이득이 없다.
+  numExecutors: 2
+
+unclassified:
+  location:
+    # 폴링 로그·빌드 링크에 쓰인다. 비워두면 Jenkins가 경고를 띄운다.
+    url: "http://localhost:9080/"
+
+jobs:
+  - script: |
+      pipelineJob('lxp-msa-pipeline') {
+        description('''
+          변경된 서비스만 골라 빌드한다. 파이프라인 정의는 저장소의 ci/Jenkinsfile에 있다.
+
+          공인 IP가 없어 GitHub webhook을 받을 수 없으므로 폴링으로 시작한다.
+          webhook을 쓸 수 있게 되면 여기와 Jenkinsfile의 triggers를 함께 지운다.
+        '''.stripIndent())
+
+        // 폴링 주기를 잡에도 둔다.
+        // Jenkinsfile의 triggers는 "한 번 빌드된 뒤"에야 적용되므로,
+        // 여기에 없으면 첫 빌드를 수동으로 돌리기 전까지 폴링이 시작되지 않는다.
+        triggers {
+          scm('H/5 * * * *')
+        }
+
+        definition {
+          cpsScm {
+            scm {
+              git {
+                remote {
+                  // public 저장소라 자격증명이 필요 없다.
+                  // private으로 바뀌면 credentialsId를 여기에 붙인다.
+                  url('https://github.com/LXP-Bimyeongsa/lxp-msa-infrastructure-starter.git')
+                }
+                branch('*/main')
+              }
+            }
+            scriptPath('ci/Jenkinsfile')
+            // false여야 전체 체크아웃이 된다. true(lightweight)는 Jenkinsfile만
+            // 가져오는데, 그러면 gradle 빌드할 소스가 없다.
+            lightweight(false)
+          }
+        }
+      }
