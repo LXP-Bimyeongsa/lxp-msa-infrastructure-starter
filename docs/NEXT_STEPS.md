@@ -2,22 +2,22 @@
 
 > 단계마다 별도 브랜치 → PR → 리뷰 → 머지. 자세한 배경은 [DECISIONS.md](DECISIONS.md).
 
-## Step 1 — 서비스 골격 재편
+## Step 1 — 서비스 골격 재편 ✅
 
-- [ ] payment-service 신규 생성 (8085, MySQL `payment_db`)
-- [ ] auth-service를 member-service로 흡수 후 폴더 제거 (D-04)
-- [ ] 전 서비스 패키지 구조 통일: `presentation / application / domain / infrastructure(persistence·outbox·grpc)`
-- [ ] 서비스별 build.gradle 의존성 정리 (JPA/Mongo, gRPC, Resilience4J, AMQP)
-- [ ] config-repo에 payment-service.yml 추가, gateway 라우팅에 `/api/payments/**` → payment-service 반영
+- [x] payment-service 신규 생성 (8085, MySQL `payment_db`)
+- [x] auth-service를 member-service로 흡수 후 폴더 제거 (D-04)
+- [x] 전 서비스 패키지 구조 통일: `presentation / application / domain / infrastructure(persistence·messaging·grpc)`
+- [x] 서비스별 build.gradle 의존성 정리 (JPA/Mongo, gRPC, Resilience4J, AMQP)
+- [x] config-repo에 payment-service.yml 추가, gateway 라우팅에 `/api/payments/**` → payment-service 반영
 
-## Step 2 — 데이터 · 메시징 인프라
+## Step 2 — 데이터 · 메시징 인프라 ✅
 
-- [ ] `compose.data.yaml` 작성: MySQL(단일, 스키마 3개) · MongoDB(단일노드 RS) · MinIO · RabbitMQ(1노드)
-- [ ] `infrastructure/mysql/init/` 스키마 생성 SQL
-- [ ] `infrastructure/mongo/init/` ReplicaSet 초기화 스크립트
-- [ ] `infrastructure/minio/init/` 버킷 생성 (course-videos)
-- [ ] `infrastructure/rabbitmq/definitions.json` — exchange·queue 선언
-- [ ] Consul 개발 모드 1노드 전환 검토 (P-02)
+- [x] `compose.data.yaml` 작성: MySQL(단일, 스키마 3개) · MongoDB(단일노드 RS) · MinIO · RabbitMQ(1노드)
+- [x] `infrastructure/mysql/init/` 스키마 생성 SQL
+- [x] `infrastructure/mongo/init/` ReplicaSet 초기화 스크립트 (D-29 — initdb.d가 아니라 별도 잡)
+- [x] `infrastructure/minio/init/` 버킷 생성 (course-videos)
+- [x] `infrastructure/rabbitmq/definitions.json` — exchange·queue 선언
+- [ ] Consul 개발 모드 1노드 전환 검토 (P-02) — 현재 3노드 `bootstrap-expect=3`
 
 ## Step 3 — CI (Jenkins)
 
@@ -42,12 +42,31 @@
 - [x] **탈퇴 회원의 잔여 access token 차단** (D-35) — introspection + 30초 캐시
 - [x] **재생 URL 구독 확인** (D-36) — 이벤트 복제 읽기 모델, 동기 호출 없음
 - [x] **정기 결제 재시도(dunning)** (D-37) — 기본 3일 간격 3회, 설정으로 조정
-- [ ] README 스모크 절차 갱신 (인증이 Keycloak으로 바뀜)
+- [x] **PG 연동 경계 + 목 PG 컨테이너** (D-39) — 승인번호 보관, 환불 시 PG 취소 호출
+- [x] README 스모크 절차 갱신 (인증이 Keycloak으로 바뀜)
 
-## Step 5 — 관측 · 검증
+## Step 5 — 안정화 (2026-07-19 ~ 20)
 
-- [ ] Alloy OTLP→Zipkin 변환 설정 (D-15)
+CI를 실제로 돌리고 실행 중인 스택을 관찰하면서 나온 것들이다.
+
+- [x] **중복 회차 스킵이 정기 결제를 영구 중단시키던 버그** (D-41)
+- [x] **예외 원인이 로그에 남지 않던 곳 5건** — gateway·member·course·subscription·payment
+- [x] **MinIO 오류를 전부 "객체 없음"으로 삼키던 것** (D-42)
+- [x] **죽은 인스턴스로 라우팅되던 것** (D-43) — `query-passing` 기본값이 false였다
+- [x] **Zipkin OOM + 죽은 채 방치** (D-44) — 메모리 상한·재시작 정책·헬스체크
+
+## Step 6 — 관측 · 검증
+
+- [ ] Alloy OTLP→Zipkin 변환 설정 (D-15) — 현재는 서비스가 Zipkin에 직접 전송
 - [ ] Grafana 대시보드 + Slack Alerting
 - [ ] Swagger/OpenAPI 추가
-- [ ] HA 검증: RabbitMQ ×3 Quorum, MongoDB RS ×3, Consul 3노드 (`ha` 프로파일)
+- [ ] Gateway Rate Limit (문서에만 있고 미구현)
+- [ ] 나머지 컨테이너 재시작 정책·헬스체크 (P-20)
+- [ ] HA 검증: RabbitMQ ×3 Quorum, MongoDB RS ×3, Consul 3노드 (`ha` 프로파일, P-14)
 - [ ] Chaos Monkey 장애 주입 (P-03)
+
+## Step 7 — 배포 (결정 필요)
+
+- [ ] **배포 대상 확정** (P-07) — EC2 + compose 약 3일 / EKS 1~2주
+- [ ] ELB 도입 시 대응 (P-08) — 헬스체크 경로, `forward-headers-strategy`
+- [ ] PG 실연동 (P-01) — 사업자등록 후 실키 발급 필요
