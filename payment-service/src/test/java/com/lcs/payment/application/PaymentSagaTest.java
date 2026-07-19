@@ -1,17 +1,22 @@
 package com.lcs.payment.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 
 import com.lcs.common.outbox.OutboxRepository;
 import com.lcs.payment.domain.Payment;
 import com.lcs.payment.domain.PaymentStatus;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -22,6 +27,23 @@ class PaymentSagaTest {
 
     @Autowired
     private OutboxRepository outboxRepository;
+
+    // PG는 외부 시스템이라 모킹한다 (D-39).
+    // 실제 HTTP 호출과 응답 매핑은 목 PG 컨테이너로 E2E에서 확인한다.
+    @MockitoBean
+    private PaymentGateway paymentGateway;
+
+    @BeforeEach
+    void stubPaymentGateway() {
+        // 기존 테스트의 전제(금액 0 = 실패)를 유지하되 PG 경계를 지나가게 한다.
+        given(paymentGateway.approve(anyString(), anyLong(), anyString()))
+                .willAnswer(invocation -> {
+                    long amount = invocation.getArgument(1);
+                    return amount > 0
+                            ? PgApproval.approved("pg-tx-" + UUID.randomUUID())
+                            : PgApproval.declined("INVALID_AMOUNT", true);
+                });
+    }
 
     @Test
     @DisplayName("결제 성공 시 APPROVED 저장 + PaymentCompleted 발행")

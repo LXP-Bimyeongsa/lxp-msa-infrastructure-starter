@@ -44,3 +44,8 @@ internal-auth:
   issuer-uri: http://localhost:8180/realms/lxp
   jwk-set-uri: http://localhost:8180/realms/lxp/protocol/openid-connect/certs
   audience: lxp-internal
+
+# PG (D-39) — 테스트는 PaymentGateway를 모킹하므로 실제 호출은 없다.
+pg:
+  base-url: http://localhost:9999
+  timeout-ms: 1000
