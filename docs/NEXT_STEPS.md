@@ -23,7 +23,7 @@
 
 - [x] `compose.ci.yaml` — Jenkins 컨테이너 (호스트 9080)
 - [x] `ci/Jenkinsfile` — 변경된 서비스만 빌드·테스트 → Docker 이미지 빌드
-- [ ] 로컬 Jenkins ↔ GitHub 연동 (webhook은 공인 IP 없으므로 폴링 방식으로 시작)
+- [x] **로컬 Jenkins ↔ GitHub 폴링 연동** (D-40) — 5분 주기, JCasC로 정의
 
 ## Step 4 — 도메인 구현
 
