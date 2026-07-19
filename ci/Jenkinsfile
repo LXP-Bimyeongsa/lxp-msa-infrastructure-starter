@@ -29,11 +29,19 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                checkout scm
                 script {
+                    // checkout이 돌려주는 값에서 브랜치를 직접 꺼낸다.
+                    //
+                    // when { branch 'main' }을 쓰지 않는 이유 — 그 조건은 BRANCH_NAME을 보는데,
+                    // BRANCH_NAME은 멀티브랜치 파이프라인에서만 채워진다. 단일 브랜치 잡에서는
+                    // 비어 있어서 조건이 영영 참이 되지 않고, 이미지 빌드 단계가 조용히 건너뛰어진다.
+                    // 실제로 그렇게 돌고 있었다(빌드 #2에서 "skipped due to when conditional").
+                    def scmVars = checkout scm
                     env.GIT_SHORT = sh(script: 'git rev-parse --short HEAD', returnStdout: true).trim()
+                    // 단일 브랜치 잡에서는 "origin/main", 멀티브랜치에서는 "main"으로 온다.
+                    env.BUILT_BRANCH = (scmVars.GIT_BRANCH ?: '').replaceFirst(/^origin\//, '')
                 }
-                echo "빌드 대상 커밋: ${env.GIT_SHORT}"
+                echo "빌드 대상 커밋: ${env.GIT_SHORT} (브랜치: ${env.BUILT_BRANCH ?: '알 수 없음'})"
             }
         }
 
@@ -114,7 +122,9 @@ pipeline {
             when {
                 allOf {
                     expression { env.CHANGED_SERVICES?.trim() }
-                    branch 'main'
+                    // Checkout 단계가 채운 값을 본다. branch 'main'은 단일 브랜치 잡에서
+                    // 절대 참이 되지 않아 이 단계가 조용히 건너뛰어진다.
+                    expression { env.BUILT_BRANCH == 'main' }
                 }
             }
             steps {

@@ -7,7 +7,7 @@
 | 저장소 | [LXP-Bimyeongsa/lxp-msa-infrastructure-starter](https://github.com/LXP-Bimyeongsa/lxp-msa-infrastructure-starter) |
 | 서비스 | 6개 (gateway, config-server, member, course, subscription, payment) |
 | 컨테이너 | 22개 (서비스 6 + 인프라 16) |
-| 기록된 설계 결정 | 39건 (D-01 ~ D-39) |
+| 기록된 설계 결정 | 40건 (D-01 ~ D-40) |
 | 미결 항목 | 18건 (P-01 ~ P-18, 이 중 10건 해결) |
 | 기술 스택 | Java 17 · Spring Boot 3.5 · Spring Cloud 2025.0 |
 
