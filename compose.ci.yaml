@@ -11,9 +11,14 @@
 services:
 
   jenkins:
-    image: jenkins/jenkins:2.492-jdk17
+    # 공식 이미지에는 docker CLI가 없어서 "Docker 이미지 빌드" 단계가
+    # `docker: not found`로 실패한다. ci/Dockerfile에서 CLI만 얹는다 (D-38).
+    build:
+      context: ./ci
+      dockerfile: Dockerfile
+    image: lxp/jenkins:2.492-jdk17
     container_name: lxp-jenkins
-    user: root                       # docker.sock 접근 및 docker CLI 설치를 위해
+    user: root                       # 호스트 docker.sock이 root 소유라 필요하다
     environment:
       JAVA_OPTS: -Djenkins.install.runSetupWizard=true
       TZ: Asia/Seoul
