@@ -12,8 +12,26 @@ package com.lcs.payment.application;
  */
 public record PgApproval(boolean approved, String transactionId, String declineCode, boolean retryable) {
 
+    private static final String DUPLICATE_CYCLE = "DUPLICATE_CYCLE";
+
     public static PgApproval approved(String transactionId) {
         return new PgApproval(true, transactionId, null, false);
+    }
+
+    /**
+     * 이미 청구된 회차라 PG를 <b>호출하지 않고</b> 건너뛴 상태.
+     *
+     * <p>거절이 아니라 멱등 스킵이다. 호출 측이 이것을 "재시도 불가 거절"과
+     * 같이 다루면 정상 동작이 스케줄을 중단시킨다 — 실제로 그렇게 동작했다(D-41).
+     * 그래서 {@link #isDuplicateCycle()}로 갈라볼 수 있게 둔다.
+     */
+    public static PgApproval duplicateCycle() {
+        return new PgApproval(false, null, DUPLICATE_CYCLE, false);
+    }
+
+    /** 멱등 스킵인가. 거절 처리 분기보다 <b>먼저</b> 봐야 한다. */
+    public boolean isDuplicateCycle() {
+        return DUPLICATE_CYCLE.equals(declineCode);
     }
 
     public static PgApproval declined(String declineCode, boolean retryable) {
