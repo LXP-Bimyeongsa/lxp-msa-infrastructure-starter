@@ -94,6 +94,27 @@ services:
   zipkin:
     image: openzipkin/zipkin:3.4
     container_name: lxp-zipkin
+    environment:
+      # 인메모리 저장소는 상한에 닿으면 오래된 span부터 버린다 (D-44).
+      # 기본값 500000은 이 스택이 주는 힙에 비해 크다 — 실제로
+      # "Terminating due to java.lang.OutOfMemoryError: Java heap space"로 죽었다.
+      # 샘플링이 1.0이라 모든 요청이 span을 만드는 것과 겹쳤다.
+      MEM_MAX_SPANS: ${ZIPKIN_MEM_MAX_SPANS:-100000}
+      # 힙을 명시하지 않으면 컨테이너가 호스트 메모리 기준으로 잡아
+      # 얼마나 쓸지 예측할 수 없다.
+      JAVA_OPTS: -Xms128m -Xmx256m
+    mem_limit: 512m
+    # 죽으면 다시 띄운다. 무한 재시작은 하지 않는다 —
+    # 계속 죽는다면 그건 살려둘 게 아니라 봐야 할 문제다.
+    restart: on-failure:3
+    # 헬스체크가 없어 죽은 것이 docker ps에 드러나지 않았다.
+    # 44분 동안 트레이스가 비어 있었는데 아무도 몰랐다.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9411/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     ports:
       - "9411:9411"
     networks: [lxp-net]

@@ -87,6 +87,19 @@ services:
   zipkin:
     image: openzipkin/zipkin:3.4
     container_name: lxp-zipkin
+    # compose.yaml과 같은 값을 유지한다 (D-44). 한쪽만 고치면
+    # infra 프로파일로 띄웠을 때만 OOM이 재현되는 상태가 된다.
+    environment:
+      MEM_MAX_SPANS: ${ZIPKIN_MEM_MAX_SPANS:-100000}
+      JAVA_OPTS: -Xms128m -Xmx256m
+    mem_limit: 512m
+    restart: on-failure:3
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9411/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     ports:
       - "9411:9411"
     networks: [lxp-net]
