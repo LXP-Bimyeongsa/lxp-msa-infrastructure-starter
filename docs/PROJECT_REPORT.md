@@ -7,8 +7,8 @@
 | 저장소 | [LXP-Bimyeongsa/lxp-msa-infrastructure-starter](https://github.com/LXP-Bimyeongsa/lxp-msa-infrastructure-starter) |
 | 서비스 | 6개 (gateway, config-server, member, course, subscription, payment) |
 | 컨테이너 | 21개 (서비스 6 + 인프라 15) |
-| 기록된 설계 결정 | 36건 (D-01 ~ D-36) |
-| 미결 항목 | 18건 (P-01 ~ P-18, 이 중 9건 해결) |
+| 기록된 설계 결정 | 37건 (D-01 ~ D-37) |
+| 미결 항목 | 18건 (P-01 ~ P-18, 이 중 10건 해결) |
 | 기술 스택 | Java 17 · Spring Boot 3.5 · Spring Cloud 2025.0 |
 
 ---
@@ -100,6 +100,10 @@ flowchart LR
 | `(subscriptionId, billingCycle)` | 같은 **회차**의 중복 청구 |
 
 두 번째 덕분에 **스케줄러가 여러 인스턴스로 돌아도 분산 락 없이 정합성이 보장**됩니다.
+
+**재시도(dunning, D-37)** — 실패해도 바로 끊지 않고 기본 "3일 간격 3회" 재시도합니다. 카드 한도 초과처럼 며칠 뒤 풀리는 사유가 흔한데, 쓰고 있던 회원을 한 번의 실패로 끊는 것은 과합니다. 다만 **최초 결제 실패는 즉시 취소** 합니다 — 아직 아무것도 제공하지 않았기 때문입니다.
+
+여기서 멱등키가 걸림돌이 됐습니다. 실패를 결제 행으로 남기면 `(subscriptionId, billingCycle)` 제약에 걸려 **같은 회차의 재시도가 영영 성공할 수 없습니다.** 그래서 재시도가 남은 실패는 행을 남기지 않고, 시도 횟수는 스케줄이 셉니다.
 
 ### 2-4. gRPC + 서킷브레이커
 
@@ -281,7 +285,7 @@ Realm 'lxp' already exists. Import skipped
 |---|---|
 
 | PG 실연동 | 현재 mock (금액 > 0이면 승인). 실키는 사업자등록 필요 |
-| 정기 결제 재시도 | 현재 1회 실패 시 즉시 중단. 실무의 dunning 정책 필요 여부 미정 |
+
 | HA 구성 | RabbitMQ·MongoDB·Consul 전부 단일 노드. 운영 확장 시 3노드 |
 | 배포 대상 | 현재 로컬 도커. EC2+compose 약 3일, EKS 1~2주 |
 
