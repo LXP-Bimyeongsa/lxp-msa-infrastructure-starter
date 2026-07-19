@@ -8,7 +8,7 @@
 Client
   ↓
 Public API Gateway
-  ├─ member-service         # 회원 + 인증(JWT 발급)
+  ├─ member-service         # 회원 프로필 (인증은 Keycloak, D-20)
   ├─ course-service
   ├─ subscription-service
   └─ payment-service
@@ -25,7 +25,7 @@ Public API Gateway
 
 모든 도메인 서비스는 Gateway를 단일 진입점으로 두고 경로 기반으로 라우팅합니다. `config-server`와 Consul 등 공통 인프라는 Gateway에 노출하지 않고 서비스가 직접 사용합니다.
 
-> 인증은 `member-service`가 담당합니다(`/api/auth/**`). Gateway는 JWT 검증만 하고 발급은 member-service가 합니다.
+> 인증·토큰 발급은 **Keycloak(OIDC)** 이 담당합니다(D-20). `member-service`는 도메인 프로필만 소유하고 Keycloak `sub`으로 연결합니다. Gateway가 JWKS로 서명을 검증하고 introspection으로 현재 유효성까지 확인한 뒤(D-35), `X-Member-Id`를 주입하고 서비스 토큰을 붙여 보냅니다(D-33).
 > 구독과 결제는 사가 코레오그래피를 위해 `subscription-service`와 `payment-service`로 분리돼 있습니다.
 > 배경은 [docs/DECISIONS.md](docs/DECISIONS.md)를 참고하세요.
 
@@ -246,13 +246,22 @@ curl -X POST "http://localhost:8080/api/courses/$CID/video/complete" \
 - 서비스별 DB — MySQL 스키마 분리 + MongoDB
 - Actuator / Prometheus / Grafana / Loki + Alloy / Zipkin
 
+이후 추가된 것:
+
+- **Keycloak(OIDC) 이관** (D-20) + 탈퇴 회원 차단 (D-32·D-35)
+- **서비스 토큰 검증** (D-33·D-34) — REST·gRPC 양쪽에서 Gateway 우회 차단
+- **회원탈퇴 사가** (D-31) — 구독 해지 → 환불까지 코레오그래피로 연결
+- **재생 권한** (D-36) — 이벤트로 복제한 읽기 모델, 동기 호출 없음
+- **정기 결제 + dunning** (D-25~D-27·D-37)
+- **PG 연동 경계 + 목 PG 컨테이너** (D-39)
+- **CI 파이프라인** (D-38·D-40) — 폴링 → 변경 서비스만 빌드 → 이미지
+
 미포함:
 
 - 기존 모놀리식 도메인 코드
-- **실제 PG 연동** — 결제는 mock (금액 > 0이면 승인)
-- 회원탈퇴 사가
-- 서비스 간 호출 시 서비스 토큰 검증 (현재 다운스트림은 `X-Member-Id`를 신뢰)
-- 재생 URL 구독 여부 확인
-- HA 구성 (RabbitMQ·MongoDB·Consul 전부 단일 노드)
+- **실제 PG 연동** — 목 PG로 경계까지만 (실키는 사업자등록 필요, P-01)
+- HA 구성 (RabbitMQ·MongoDB 단일 노드, P-14)
+- 배포 (현재 로컬 도커, P-07)
+- Gateway Rate Limit
 
 > 결정 배경은 [docs/DECISIONS.md](docs/DECISIONS.md), 진행 상황은 [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md) 참고.

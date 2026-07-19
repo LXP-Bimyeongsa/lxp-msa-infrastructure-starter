@@ -12,17 +12,20 @@ flowchart LR
 
     subgraph NET["commerce-net (Trust Boundary) · Docker Network"]
         direction LR
-        CLIENT[client] -->|JWT| GW[API Gateway<br/>Spring Cloud Gateway<br/>JWT 검증·라우팅·Rate Limit]
+        CLIENT[client] -->|access token| GW[API Gateway<br/>Spring Cloud Gateway<br/>JWKS 검증·introspection·라우팅]
+        KC[Keycloak<br/>OIDC · 토큰 발급]
+        CLIENT -.->|로그인| KC
+        KC -.->|JWKS · introspection| GW
 
         subgraph APPS["APPS · Resilience4J"]
-            MEMBER[member-service<br/>회원 + 인증]
+            MEMBER[member-service<br/>회원 프로필]
             COURSE[course-service<br/>강의]
             SUBS[subscription-service<br/>구독]
             PAY[payment-service<br/>결제·멱등키]
         end
 
-        GW --> MEMBER & COURSE & SUBS & PAY
-        SUBS <-->|gRPC · 서킷브레이커| PAY
+        GW -->|서비스 토큰 aud lxp-internal| MEMBER & COURSE & SUBS & PAY
+        SUBS -->|gRPC · 서킷브레이커| MEMBER
 
         subgraph DATA["DATA · DB per service · Outbox"]
             MYSQL[(MySQL<br/>member_db · subscription_db · payment_db)]
@@ -42,18 +45,23 @@ flowchart LR
         end
 
         MYSQL -.->|Outbox 폴링| RMQ
-        MONGO -.->|Outbox 폴링| RMQ
         RMQ -.->|사가 이벤트 소비| SUBS & PAY
+        RMQ -.->|구독 상태 이벤트 소비| COURSE
 
         CONSUL[Consul<br/>서비스 디스커버리]
         CONFIG[Config Server<br/>Spring Cloud Config]
         CONSUL ~~~ CONFIG
 
         subgraph OBS["OBSERVABILITY"]
-            ALLOY[Alloy<br/>수집 에이전트] --> PROM[Prometheus<br/>지표] & LOKI[Loki<br/>로그] & ZIPKIN[Zipkin<br/>추적]
+            ALLOY[Alloy<br/>로그 파일 수집] --> LOKI[Loki<br/>로그]
+            PROM[Prometheus<br/>지표]
+            ZIPKIN[Zipkin<br/>추적]
             PROM & LOKI & ZIPKIN --> GRAF[Grafana<br/>대시보드·Alerting]
             GRAF -->|Alerting| SLACK[Slack 알림]
         end
+
+        PROM -.->|actuator 스크레이프 pull| APPS
+        APPS -.->|span 직접 전송 push| ZIPKIN
     end
 
     DEP -->|롤링 배포| NET
@@ -64,12 +72,13 @@ flowchart LR
 
 | 흐름 | 경로 |
 |---|---|
-| 사용자 요청 | client → Gateway(JWT 검증) → 각 서비스 |
+| 인증 | client → Keycloak(토큰 발급) → Gateway(JWKS 검증 + introspection) → `X-Member-Id` 주입 + 서비스 토큰 부착 (D-20·D-33·D-35) |
+| 사용자 요청 | client → Gateway → 각 서비스 (다운스트림은 `aud: lxp-internal` 서비스 토큰을 요구) |
 | DB 접근 | 서비스 → 자기 스키마/DB만 (타 서비스 스키마 접근 금지) |
 | 이벤트·메시지 | 서비스 → Outbox 테이블 → 내부 릴레이 폴링 → RabbitMQ → 소비 서비스 |
 | 동영상 | client ↔ MinIO 직접 전송 (Presigned URL), course-service는 메타데이터·URL만 관리 |
-| 서비스 간 동기 호출 | gRPC + Resilience4J 서킷브레이커 (subscription ↔ payment) |
-| 관측 | 서비스 → OTLP push → Alloy → Prometheus/Loki/Zipkin → Grafana → Slack |
+| 서비스 간 동기 호출 | gRPC + Resilience4J 서킷브레이커 (**subscription → member 하나뿐**, D-17) |
+| 관측 | 지표 = Prometheus가 `/actuator/prometheus` 스크레이프 · 추적 = 서비스가 Zipkin에 직접 전송 · 로그 = 파일 → Alloy → Loki. 셋 다 Grafana에서 본다 (Alloy OTLP 변환은 미적용, D-15) |
 | 설정 | config-repo(Git) → Config Server → 각 서비스 |
 
 ## 구독 결제 사가 (코레오그래피)
@@ -98,7 +107,9 @@ sequenceDiagram
 
 ## Outbox 패턴
 
-각 서비스는 도메인 변경과 이벤트 기록을 **하나의 로컬 트랜잭션**으로 커밋한다.
+**member · subscription · payment 3개가 사용한다.** course-service는 이벤트를 발행하지 않고 소비만 하므로(D-36의 읽기 모델) outbox가 없다. 구현은 `common-outbox` 모듈로 추출돼 있다(D-30).
+
+이 세 서비스는 도메인 변경과 이벤트 기록을 **하나의 로컬 트랜잭션**으로 커밋한다.
 
 1. 비즈니스 테이블 변경 + `outbox` 테이블 INSERT (동일 트랜잭션)
 2. 서비스 내부 `@Scheduled` 릴레이가 outbox 폴링
@@ -113,7 +124,8 @@ sequenceDiagram
 - config-server, Consul 등 공통 인프라는 Gateway에 노출하지 않고 서비스가 직접 사용한다.
 - 설정은 코드가 아닌 데이터로 취급하여 루트 `config-repo`에서 중앙 관리한다.
 - DB per service는 개발 단계에서 **스키마 단위**로 지킨다(물리 분리는 운영 확장 시).
-- 인증(JWT 발급)은 member-service가 담당하고, Gateway는 검증만 한다.
+- **인증·토큰 발급은 Keycloak(OIDC)이 담당한다** (D-20). member-service는 도메인 프로필만 소유하고 Keycloak `sub`으로 연결한다. Gateway가 JWKS로 서명을 검증하고 introspection으로 현재 유효성까지 확인한다(D-35).
+- **다운스트림은 Gateway가 붙인 서비스 토큰을 요구한다** (D-33·D-34). 서명만으로는 부족해 `aud: lxp-internal`까지 확인한다 — 이 audience를 실을 수 있는 클라이언트는 Gateway 하나뿐이다.
 
 ## 가용성 로드맵
 
@@ -123,6 +135,6 @@ sequenceDiagram
 |---|---|---|
 | RabbitMQ | 1노드 | ×3 Quorum Queue (브로커 SPOF 제거) |
 | MongoDB | 단일노드 ReplicaSet (트랜잭션 가능) | ReplicaSet ×3 |
-| Consul | 1노드 (`bootstrap-expect=1`) | 3노드 |
+| Consul | **3노드 (`bootstrap-expect=3`)** — 1노드 전환 검토 중(P-02) | 3노드 유지 |
 | MySQL | 단일 컨테이너 · 스키마 분리 | 서비스별 인스턴스 분리 |
 | Chaos Monkey | 미적용 | 무작위 장애 주입(회복탄력성 테스트) |

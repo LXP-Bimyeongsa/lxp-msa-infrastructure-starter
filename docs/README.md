@@ -7,8 +7,9 @@
 | [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | 폴더 구조 · 서비스 내부 구조 · 포트 맵 · compose 실행 조합 |
 | [CONVENTIONS.md](CONVENTIONS.md) | 브랜치/PR · 커밋 · 서비스 경계 규율 · Outbox/proto/이벤트 규칙 |
 | [PR_STRATEGY.md](PR_STRATEGY.md) | PR 쪼개는 기준 · 크기 가이드 · 스택 PR 운용 · 리뷰 규칙 |
-| [DECISIONS.md](DECISIONS.md) | 의사결정 기록 (D-01 ~) 와 미결 항목 (P-01 ~) |
-| [NEXT_STEPS.md](NEXT_STEPS.md) | 단계별 작업 로드맵 (Step 1 ~ 5) |
+| [DECISIONS.md](DECISIONS.md) | 의사결정 기록 (D-01 ~ D-45) 와 미결 항목 (P-01 ~ P-20) |
+| [NEXT_STEPS.md](NEXT_STEPS.md) | 단계별 작업 로드맵 (Step 1 ~ 7) |
+| [WORK_LOG.md](WORK_LOG.md) | 세션별 작업 기록 — 실제로 터진 문제와 해결 과정 (뒤쪽이 최신) |
 
 ## 읽는 순서 (신규 팀원)
 
