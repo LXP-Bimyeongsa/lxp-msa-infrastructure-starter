@@ -7,7 +7,7 @@
 # 데몬은 설치하지 않는다 — 호스트의 docker.sock을 마운트해 쓰는 DooD 구성이라
 # 클라이언트만 있으면 된다. 데몬까지 넣으면(DinD) 이미지 캐시가 분리되고
 # 특권 컨테이너가 필요해진다.
-FROM jenkins/jenkins:2.492-jdk17
+FROM jenkins/jenkins:2.516.1-jdk17
 
 USER root
 
@@ -24,6 +24,15 @@ RUN apt-get update \
     && apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
+
+# 플러그인을 이미지에 미리 넣는다 (D-40).
+# 설정 마법사로 깔면 컨테이너 볼륨을 지울 때마다 다시 클릭해야 한다.
+COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
+RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
+
+# 설정은 ci/jenkins.yaml이 소유한다. 마법사는 끈다.
+ENV JAVA_OPTS="-Djenkins.install.runSetupWizard=false"
+ENV CASC_JENKINS_CONFIG=/var/jenkins_home/casc/jenkins.yaml
 
 # 호스트 docker.sock이 root 소유라 root로 돈다.
 # 로컬 학습 환경 전제다 — 컨테이너가 호스트 Docker를 그대로 조종할 수 있다.

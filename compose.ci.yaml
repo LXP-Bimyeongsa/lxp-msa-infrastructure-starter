@@ -16,18 +16,23 @@ services:
     build:
       context: ./ci
       dockerfile: Dockerfile
-    image: lxp/jenkins:2.492-jdk17
+    image: lxp/jenkins:2.516.1-jdk17
     container_name: lxp-jenkins
     user: root                       # 호스트 docker.sock이 root 소유라 필요하다
     environment:
-      JAVA_OPTS: -Djenkins.install.runSetupWizard=true
       TZ: Asia/Seoul
+      # 잡·보안 설정은 ci/jenkins.yaml이 소유한다 (D-40).
+      # 비밀번호를 파일에 적지 않고 여기서 주입한다.
+      JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
+      JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-admin}
     ports:
       - "9080:8080"
       - "50000:50000"                # 에이전트 접속용
     volumes:
       - jenkins-data:/var/jenkins_home
       - /var/run/docker.sock:/var/run/docker.sock
+      # JCasC 설정. 고치고 컨테이너만 재시작하면 반영된다.
+      - ./ci/jenkins.yaml:/var/jenkins_home/casc/jenkins.yaml:ro
     networks: [lxp-net]
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://localhost:8080/login"]

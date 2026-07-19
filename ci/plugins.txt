@@ -1,0 +1,26 @@
+# Jenkins 플러그인 (D-40)
+#
+# 설정 마법사를 끄고 이 목록으로 미리 설치한다. 마법사의 "추천 플러그인 설치"는
+# 80개 남짓을 받아오는데 우리가 쓰는 것은 아래뿐이고, 무엇보다 클릭으로 깔면
+# 컨테이너를 지울 때마다 다시 해야 한다.
+#
+# 버전을 고정하지 않는 이유 — 고정하면 플러그인 간 의존성 충돌을 직접 풀어야 한다.
+# jenkins-plugin-cli가 Jenkins 버전에 맞는 조합을 골라준다.
+
+# 파이프라인 (workflow-job, workflow-cps, pipeline-stage-view 등을 끌고 온다)
+workflow-aggregator
+
+# SCM 폴링 대상
+git
+
+# 잡 정의를 코드로 (JCasC의 jobs 섹션이 이걸로 실행된다)
+job-dsl
+
+# 설정 자체를 코드로
+configuration-as-code
+
+# Jenkinsfile의 timestamps() 옵션
+timestamper
+
+# Jenkinsfile의 junit 스텝
+junit
