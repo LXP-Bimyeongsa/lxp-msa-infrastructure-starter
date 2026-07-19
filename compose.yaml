@@ -370,6 +370,9 @@ services:
       BILLING_PERIOD_DAYS: ${BILLING_PERIOD_DAYS:-30}
       BILLING_SCHEDULER_ENABLED: ${BILLING_SCHEDULER_ENABLED:-true}
       BILLING_SCHEDULER_INTERVAL_MS: ${BILLING_SCHEDULER_INTERVAL_MS:-60000}
+      # 정기 결제 재시도 (D-37). 데모로 짧게 보려면 .env에서 조정한다.
+      BILLING_DUNNING_MAX_ATTEMPTS: ${BILLING_DUNNING_MAX_ATTEMPTS:-3}
+      BILLING_DUNNING_RETRY_SECONDS: ${BILLING_DUNNING_RETRY_SECONDS:-259200}
       # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs

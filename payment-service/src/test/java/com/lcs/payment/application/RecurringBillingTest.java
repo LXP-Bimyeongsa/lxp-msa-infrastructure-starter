@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -112,6 +113,85 @@ class RecurringBillingTest {
                 .anyMatch(m -> m.getEventType().equals("PaymentCompleted")
                         && m.getPayload().contains("\"subscriptionId\":106")
                         && m.getPayload().contains("\"billingCycle\":2"));
+    }
+
+    @Test
+    @DisplayName("정기 결제가 실패해도 바로 끊지 않고 재시도를 예약한다 (D-37)")
+    void failedScheduledPaymentSchedulesRetry() {
+        BillingSchedule schedule = givenFailingSchedule(110L);
+
+        paymentService.processScheduledPayment(schedule);
+
+        BillingSchedule after = billingScheduleRepository.findById(110L).orElseThrow();
+        assertThat(after.isActive()).isTrue();          // 아직 살아 있다
+        assertThat(after.getRetryCount()).isEqualTo(1);
+        assertThat(after.getNextBillingCycle()).isEqualTo(2);   // 회차는 그대로
+    }
+
+    @Test
+    @DisplayName("재시도가 남아 있는 동안에는 PaymentFailed를 발행하지 않는다 (D-37)")
+    void retryingDoesNotEmitPaymentFailed() {
+        BillingSchedule schedule = givenFailingSchedule(111L);
+
+        paymentService.processScheduledPayment(schedule);
+
+        // 발행하면 subscription이 받아서 해지해버린다 — 재시도의 의미가 없어진다.
+        assertThat(outboxRepository.findAll())
+                .noneMatch(m -> m.getEventType().equals("PaymentFailed")
+                        && m.getPayload().contains("\"subscriptionId\":111"));
+    }
+
+    @Test
+    @DisplayName("재시도를 다 쓰면 스케줄이 멈추고 PaymentFailed가 발행된다 (D-37)")
+    void exhaustedRetriesStopScheduleAndEmitFailure() {
+        BillingSchedule schedule = givenFailingSchedule(112L);
+
+        // 기본 정책은 3회. 3번째 시도에서 포기한다.
+        for (int i = 0; i < 3; i++) {
+            paymentService.processScheduledPayment(
+                    billingScheduleRepository.findById(112L).orElseThrow());
+        }
+
+        BillingSchedule after = billingScheduleRepository.findById(112L).orElseThrow();
+        assertThat(after.isActive()).isFalse();
+        assertThat(outboxRepository.findAll())
+                .anyMatch(m -> m.getEventType().equals("PaymentFailed")
+                        && m.getPayload().contains("\"subscriptionId\":112"));
+    }
+
+    @Test
+    @DisplayName("재시도 도중 성공하면 회차가 올라가고 실패 횟수가 초기화된다 (D-37)")
+    void successDuringRetryResetsCount() {
+        BillingSchedule schedule = givenFailingSchedule(113L);
+        paymentService.processScheduledPayment(schedule);
+        assertThat(billingScheduleRepository.findById(113L).orElseThrow().getRetryCount()).isEqualTo(1);
+
+        // 카드가 풀린 상황 — 같은 스케줄을 정상 금액으로 바꿔 다시 시도한다.
+        BillingSchedule recovered = billingScheduleRepository.findById(113L).orElseThrow();
+        ReflectionTestUtils.setField(recovered, "amount", 29_000L);
+        paymentService.processScheduledPayment(recovered);
+
+        BillingSchedule after = billingScheduleRepository.findById(113L).orElseThrow();
+        assertThat(after.getRetryCount()).isZero();
+        assertThat(after.getNextBillingCycle()).isEqualTo(3);
+    }
+
+    @Test
+    @DisplayName("최초 결제 실패는 재시도하지 않는다 — 즉시 PaymentFailed (D-37)")
+    void firstPaymentFailureIsTerminal() {
+        paymentService.processInitialPayment(UUID.randomUUID().toString(), 114L, 1L, 0L);
+
+        // 아직 아무것도 제공하지 않은 상태라 유예할 이유가 없다.
+        assertThat(billingScheduleRepository.findById(114L)).isEmpty();
+        assertThat(outboxRepository.findAll())
+                .anyMatch(m -> m.getEventType().equals("PaymentFailed")
+                        && m.getPayload().contains("\"subscriptionId\":114"));
+    }
+
+    /** 승인되지 않는 금액(0)으로 활성 스케줄을 만든다 — 정기 결제 실패를 재현한다. */
+    private BillingSchedule givenFailingSchedule(Long subscriptionId) {
+        return billingScheduleRepository.save(BillingSchedule.startAfterFirstPayment(
+                subscriptionId, 1L, 0L, java.time.Duration.ofDays(30)));
     }
 
     /** 회차 2를 가리키는 오래된 스케줄 사본 — 다중 인스턴스 레이스를 재현한다. */

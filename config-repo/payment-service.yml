@@ -34,3 +34,9 @@ billing:
   scheduler:
     enabled: ${BILLING_SCHEDULER_ENABLED:true}
     interval-ms: ${BILLING_SCHEDULER_INTERVAL_MS:60000}
+  # 정기 결제 재시도 (D-37). 수치는 사업 정책이라 설정으로 뺀다.
+  # 기본값 "3일 간격 3회" — 카드 한도가 풀릴 만한 시간을 준다.
+  # max-attempts: 1로 두면 재시도 없이 즉시 중단(D-37 이전 동작)으로 돌아간다.
+  dunning:
+    max-attempts: ${BILLING_DUNNING_MAX_ATTEMPTS:3}
+    retry-interval-seconds: ${BILLING_DUNNING_RETRY_SECONDS:259200}
