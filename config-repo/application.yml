@@ -24,6 +24,19 @@ spring:
         prefer-ip-address: true
         health-check-path: /actuator/health
         health-check-interval: 10s
+        # 헬스체크를 통과한 인스턴스만 호출 대상으로 삼는다 (D-43).
+        #
+        # 기본값이 false다 — 즉 디스커버리가 critical 인스턴스까지 전부 돌려주고
+        # 로드밸런서가 죽은 것과 산 것을 번갈아 고른다. 컨테이너를 재생성한 직후
+        # 실제로 gateway가 죽은 course-service로 보내 500이 났다(P-19).
+        # "GET은 되는데 POST는 안 되는" 것처럼 보여 원인을 엉뚱한 데서 찾게 된다.
+        query-passing: true
+        # critical 상태가 이만큼 지속되면 Consul이 등록을 스스로 지운다.
+        # 없으면 죽은 등록이 영영 남아 목록을 오염시킨다(실제로 수동 deregister로 치웠다).
+        #
+        # 헬스체크 간격(10s)보다 넉넉히 잡는다 — 재기동 중 잠깐 critical이 된
+        # 멀쩡한 인스턴스까지 지워버리면 복구 후 다시 등록될 때까지 빈다.
+        health-check-critical-timeout: 1m
 
 logging:
   level:
