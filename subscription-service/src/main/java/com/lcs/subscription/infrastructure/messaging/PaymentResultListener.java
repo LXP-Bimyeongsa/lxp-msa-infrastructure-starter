@@ -38,7 +38,10 @@ public class PaymentResultListener {
                     payload.path("reason").asText("unknown"));
             // 환불 완료는 정보성 — 구독은 이미 CANCELLED 상태다.
             case "payment.refunded" -> log.info("환불 완료 수신: subscriptionId={}", subscriptionId);
-            default -> log.warn("알 수 없는 라우팅 키: {}", routingKey);
+            // 메시지는 여기서 ack되고 사라진다. 라우팅 키만 남기면 "어느 구독이
+            // 처리되지 않았나"를 되짚을 수 없다.
+            default -> log.warn("알 수 없는 라우팅 키, 메시지 무시: routingKey={} subscriptionId={}",
+                    routingKey, subscriptionId);
         }
     }
 }

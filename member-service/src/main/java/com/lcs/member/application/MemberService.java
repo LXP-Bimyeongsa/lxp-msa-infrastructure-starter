@@ -56,7 +56,11 @@ public class MemberService {
             member.linkKeycloakUser(keycloakId);
             memberRepository.saveAndFlush(member);
         } catch (RuntimeException e) {
-            log.error("keycloakId 연결 실패 — Keycloak 사용자 보상 삭제: email={}", email);
+            // keycloakId를 함께 남긴다 — deleteUser는 실패해도 예외를 삼키므로,
+            // 보상까지 실패하면 이 줄이 "어느 Keycloak 사용자를 손으로 지워야 하나"의
+            // 유일한 단서가 된다. e를 넘겨 원인(제약 위반인지 플러시 실패인지)도 남긴다.
+            log.error("keycloakId 연결 실패 — Keycloak 사용자 보상 삭제: memberId={} email={} keycloakId={}",
+                    member.getId(), email, keycloakId, e);
             keycloakUserClient.deleteUser(keycloakId);
             throw e;
         }
