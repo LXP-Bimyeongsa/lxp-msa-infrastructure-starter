@@ -40,3 +40,9 @@ billing:
   dunning:
     max-attempts: ${BILLING_DUNNING_MAX_ATTEMPTS:3}
     retry-interval-seconds: ${BILLING_DUNNING_RETRY_SECONDS:259200}
+
+# PG 연동 (D-39). 실연동 시 base-url과 인증 헤더만 바꾼다 (P-01).
+pg:
+  base-url: ${PG_BASE_URL:http://localhost:8090}
+  # 결제는 오래 매달려 있으면 안 된다 — 스케줄러 스레드가 묶이면 다른 청구가 밀린다.
+  timeout-ms: ${PG_TIMEOUT_MS:3000}

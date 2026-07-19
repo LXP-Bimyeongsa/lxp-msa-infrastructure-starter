@@ -373,6 +373,9 @@ services:
       # 정기 결제 재시도 (D-37). 데모로 짧게 보려면 .env에서 조정한다.
       BILLING_DUNNING_MAX_ATTEMPTS: ${BILLING_DUNNING_MAX_ATTEMPTS:-3}
       BILLING_DUNNING_RETRY_SECONDS: ${BILLING_DUNNING_RETRY_SECONDS:-259200}
+      # PG 연동 (D-39). 목 PG는 컨테이너 안에서 부르므로 내부 주소다.
+      PG_BASE_URL: http://mock-pg:8080
+      PG_TIMEOUT_MS: ${PG_TIMEOUT_MS:-3000}
       # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
       KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
       KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
@@ -388,6 +391,9 @@ services:
       mysql:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      # PG 연동 (D-39)
+      mock-pg:
         condition: service_healthy
     networks: [lxp-net]
     healthcheck:

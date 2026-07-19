@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/payments",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.amount == 1004)]" }
+    ]
+  },
+  "response": {
+    "status": 402,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "code": "LIMIT_EXCEEDED",
+      "message": "한도 초과",
+      "retryable": true
+    }
+  }
+}

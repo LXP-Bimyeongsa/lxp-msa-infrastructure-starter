@@ -1,0 +1,19 @@
+{
+  "priority": 1,
+  "request": {
+    "method": "POST",
+    "urlPath": "/v1/payments",
+    "bodyPatterns": [
+      { "matchesJsonPath": "$[?(@.amount == 1005)]" }
+    ]
+  },
+  "response": {
+    "status": 402,
+    "headers": { "Content-Type": "application/json" },
+    "jsonBody": {
+      "code": "STOLEN_CARD",
+      "message": "분실·도난 카드",
+      "retryable": false
+    }
+  }
+}

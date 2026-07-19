@@ -1,17 +1,22 @@
 package com.lcs.payment.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 
 import com.lcs.common.outbox.OutboxRepository;
 import com.lcs.payment.domain.BillingSchedule;
 import com.lcs.payment.domain.PaymentStatus;
 import com.lcs.payment.infrastructure.persistence.BillingScheduleRepository;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.util.ReflectionTestUtils;
 
 @SpringBootTest
@@ -26,6 +31,22 @@ class RecurringBillingTest {
 
     @Autowired
     private OutboxRepository outboxRepository;
+
+    // PG는 외부 시스템이라 모킹한다 (D-39).
+    @MockitoBean
+    private PaymentGateway paymentGateway;
+
+    @BeforeEach
+    void stubPaymentGateway() {
+        // 금액 0 = 거절(재시도 가능). dunning 테스트가 이 전제를 쓴다.
+        given(paymentGateway.approve(anyString(), anyLong(), anyString()))
+                .willAnswer(invocation -> {
+                    long amount = invocation.getArgument(1);
+                    return amount > 0
+                            ? PgApproval.approved("pg-tx-" + UUID.randomUUID())
+                            : PgApproval.declined("INVALID_AMOUNT", true);
+                });
+    }
 
     @Test
     @DisplayName("최초 결제가 승인되면 다음 회차가 예약된다")
@@ -186,6 +207,62 @@ class RecurringBillingTest {
         assertThat(outboxRepository.findAll())
                 .anyMatch(m -> m.getEventType().equals("PaymentFailed")
                         && m.getPayload().contains("\"subscriptionId\":114"));
+    }
+
+    @Test
+    @DisplayName("재시도 불가 거절(도난 카드)은 dunning을 돌리지 않고 즉시 중단한다 (D-39)")
+    void nonRetryableDeclineStopsImmediately() {
+        given(paymentGateway.approve(anyString(), anyLong(), anyString()))
+                .willReturn(PgApproval.declined("STOLEN_CARD", false));
+        BillingSchedule schedule = givenFailingSchedule(120L);
+
+        paymentService.processScheduledPayment(schedule);
+
+        // 3일씩 3번 더 긁어봐야 같은 답이 온다. 첫 실패에서 끝낸다.
+        BillingSchedule after = billingScheduleRepository.findById(120L).orElseThrow();
+        assertThat(after.isActive()).isFalse();
+        assertThat(after.getRetryCount()).isZero();
+    }
+
+    @Test
+    @DisplayName("재시도 불가 거절도 PaymentFailed를 발행한다 — 구독이 해지돼야 하므로 (D-39)")
+    void nonRetryableDeclineEmitsPaymentFailed() {
+        given(paymentGateway.approve(anyString(), anyLong(), anyString()))
+                .willReturn(PgApproval.declined("STOLEN_CARD", false));
+        BillingSchedule schedule = givenFailingSchedule(121L);
+
+        paymentService.processScheduledPayment(schedule);
+
+        assertThat(outboxRepository.findAll())
+                .anyMatch(m -> m.getEventType().equals("PaymentFailed")
+                        && m.getPayload().contains("\"subscriptionId\":121")
+                        && m.getPayload().contains("STOLEN_CARD"));
+    }
+
+    @Test
+    @DisplayName("PG 통신 실패는 재시도 대상이다 — 승인됐는지 모르는 상태라 단정하지 않는다 (D-39)")
+    void pgUnreachableIsRetried() {
+        given(paymentGateway.approve(anyString(), anyLong(), anyString()))
+                .willReturn(PgApproval.unreachable());
+        BillingSchedule schedule = givenFailingSchedule(122L);
+
+        paymentService.processScheduledPayment(schedule);
+
+        BillingSchedule after = billingScheduleRepository.findById(122L).orElseThrow();
+        assertThat(after.isActive()).isTrue();
+        assertThat(after.getRetryCount()).isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("승인 시 PG 거래 ID를 저장한다 — 없으면 환불할 수 없다 (D-39)")
+    void storesPgTransactionId() {
+        given(paymentGateway.approve(anyString(), anyLong(), anyString()))
+                .willReturn(PgApproval.approved("pg-tx-fixed"));
+
+        paymentService.processInitialPayment(UUID.randomUUID().toString(), 123L, 1L, 29_000L);
+
+        assertThat(paymentService.findBySubscription(123L).get(0).getPgTransactionId())
+                .isEqualTo("pg-tx-fixed");
     }
 
     /** 승인되지 않는 금액(0)으로 활성 스케줄을 만든다 — 정기 결제 실패를 재현한다. */

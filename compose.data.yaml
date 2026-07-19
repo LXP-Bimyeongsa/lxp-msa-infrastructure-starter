@@ -9,6 +9,25 @@
 
 services:
 
+  # 목 PG (D-39). 실제 PG는 사업자등록이 필요하므로(P-01) 그때까지 이걸로 붙인다.
+  # 프로세스 안의 if문이 아니라 네트워크 건너편에 두는 것이 핵심이다 —
+  # 타임아웃·거절코드·승인번호처럼 실연동에서 터지는 것들이 여기서 드러난다.
+  mock-pg:
+    image: wiremock/wiremock:3.9.1
+    container_name: lxp-mock-pg
+    command: ["--global-response-templating", "--verbose"]
+    volumes:
+      - ./infrastructure/mock-pg/mappings:/home/wiremock/mappings:ro
+    ports:
+      - "${MOCK_PG_PORT:-8090}:8080"
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/__admin/mappings"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+
   mysql:
     image: mysql:8.4
     container_name: lxp-mysql

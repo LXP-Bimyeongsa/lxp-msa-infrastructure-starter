@@ -43,6 +43,16 @@ public class Payment {
     @Column(name = "billing_cycle", nullable = false)
     private Integer billingCycle;
 
+    // PG 승인번호 (D-39). 환불할 때 PG에 넘겨야 하므로 반드시 보관한다 —
+    // 이것이 없으면 우리 DB에서 상태만 바꿀 수 있을 뿐 실제 돈은 돌려주지 못한다.
+    // 실패한 결제는 승인번호가 없으므로 nullable이다.
+    @Column(name = "pg_transaction_id", length = 64)
+    private String pgTransactionId;
+
+    // 거절 코드 (D-39). 왜 실패했는지 남지 않으면 문의가 왔을 때 답할 수 없다.
+    @Column(name = "pg_decline_code", length = 40)
+    private String pgDeclineCode;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -65,15 +75,21 @@ public class Payment {
     }
 
     public static Payment approved(Long subscriptionId, Long memberId, Long amount,
-                                   String idempotencyKey, int billingCycle) {
-        return new Payment(subscriptionId, memberId, amount, PaymentStatus.APPROVED,
+                                   String idempotencyKey, int billingCycle,
+                                   String pgTransactionId) {
+        Payment payment = new Payment(subscriptionId, memberId, amount, PaymentStatus.APPROVED,
                 idempotencyKey, billingCycle);
+        payment.pgTransactionId = pgTransactionId;
+        return payment;
     }
 
     public static Payment failed(Long subscriptionId, Long memberId, Long amount,
-                                 String idempotencyKey, int billingCycle) {
-        return new Payment(subscriptionId, memberId, amount, PaymentStatus.FAILED,
+                                 String idempotencyKey, int billingCycle,
+                                 String pgDeclineCode) {
+        Payment payment = new Payment(subscriptionId, memberId, amount, PaymentStatus.FAILED,
                 idempotencyKey, billingCycle);
+        payment.pgDeclineCode = pgDeclineCode;
+        return payment;
     }
 
     /** 환불. 멱등 — 이미 REFUNDED면 false. APPROVED 상태만 환불 가능. */
@@ -112,5 +128,13 @@ public class Payment {
 
     public Integer getBillingCycle() {
         return billingCycle;
+    }
+
+    public String getPgTransactionId() {
+        return pgTransactionId;
+    }
+
+    public String getPgDeclineCode() {
+        return pgDeclineCode;
     }
 }

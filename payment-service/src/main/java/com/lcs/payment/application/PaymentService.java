@@ -24,6 +24,7 @@ public class PaymentService {
     private final PaymentRepository paymentRepository;
     private final BillingScheduleRepository billingScheduleRepository;
     private final OutboxWriter outboxWriter;
+    private final PaymentGateway paymentGateway;
     private final Duration billingPeriod;
     private final int maxDunningAttempts;
     private final Duration dunningRetryInterval;
@@ -31,6 +32,7 @@ public class PaymentService {
     public PaymentService(PaymentRepository paymentRepository,
                           BillingScheduleRepository billingScheduleRepository,
                           OutboxWriter outboxWriter,
+                          PaymentGateway paymentGateway,
                           @Value("${billing.period-days:30}") long billingPeriodDays,
                           // 재시도 횟수·간격은 사업 정책이지 코드가 정할 것이 아니다 (D-37).
                           // 기본값은 "3일 간격 3회"로, 카드 한도가 풀릴 만한 시간을 준다.
@@ -39,6 +41,7 @@ public class PaymentService {
         this.paymentRepository = paymentRepository;
         this.billingScheduleRepository = billingScheduleRepository;
         this.outboxWriter = outboxWriter;
+        this.paymentGateway = paymentGateway;
         this.billingPeriod = Duration.ofDays(billingPeriodDays);
         this.maxDunningAttempts = maxDunningAttempts;
         this.dunningRetryInterval = Duration.ofSeconds(retryIntervalSeconds);
@@ -56,8 +59,8 @@ public class PaymentService {
         }
         // 1회차 실패는 재시도하지 않는다 (D-37) — 아직 아무것도 제공하지 않은 상태라
         // 즉시 취소가 맞다. PaymentFailed를 그대로 발행해 subscription이 보상하게 둔다.
-        boolean approved = charge(eventId, subscriptionId, memberId, amount, FIRST_CYCLE, true);
-        if (approved) {
+        PgApproval result = charge(eventId, subscriptionId, memberId, amount, FIRST_CYCLE, true);
+        if (result.approved()) {
             billingScheduleRepository.save(
                     BillingSchedule.startAfterFirstPayment(subscriptionId, memberId, amount, billingPeriod));
         }
@@ -83,17 +86,19 @@ public class PaymentService {
 
         // 재시도가 남아 있으면 실패 이벤트를 내지 않는다 — subscription이 받으면 해지해버린다.
         boolean lastChance = schedule.retriesExhausted(maxDunningAttempts - 1);
-        boolean approved = charge(eventId, schedule.getSubscriptionId(),
+        PgApproval result = charge(eventId, schedule.getSubscriptionId(),
                 schedule.getMemberId(), schedule.getAmount(), cycle, lastChance);
 
-        if (approved) {
+        if (result.approved()) {
             schedule.advance(billingPeriod);
-        } else if (lastChance) {
-            // 재시도를 다 썼다. 이제야 스케줄을 멈추고, 위 charge()가 발행한
-            // PaymentFailed를 subscription이 받아 해지한다.
+        } else if (lastChance || !result.retryable()) {
+            // 재시도를 다 썼거나, 재시도해도 소용없는 거절이다 (D-39).
+            // 분실·도난 카드를 3일씩 3번 더 긁어봐야 같은 답이 오고,
+            // 그 사이 회원은 서비스를 계속 쓴다.
             schedule.deactivate();
-            log.warn("정기 결제 재시도 소진으로 스케줄 중단: subscriptionId={} cycle={} 시도={}회",
-                    schedule.getSubscriptionId(), cycle, maxDunningAttempts);
+            log.warn("정기 결제 중단: subscriptionId={} cycle={} code={} 사유={}",
+                    schedule.getSubscriptionId(), cycle, result.declineCode(),
+                    lastChance ? "재시도 소진(" + maxDunningAttempts + "회)" : "재시도 불가 거절");
         } else {
             schedule.scheduleRetry(dunningRetryInterval);
             log.info("정기 결제 실패, 재시도 예정: subscriptionId={} cycle={} {}/{}회 다음={}",
@@ -115,6 +120,14 @@ public class PaymentService {
         List<Payment> payments = paymentRepository.findBySubscriptionIdOrderByCreatedAtDesc(subscriptionId);
         for (Payment payment : payments) {
             if (payment.refund()) {
+                // PG에 실제로 승인 취소를 요청한다 (D-39).
+                // 이 호출 없이 상태만 REFUNDED로 바꾸면 회원 돈은 그대로 나가 있다.
+                //
+                // 실패하면 예외가 전파돼 트랜잭션이 롤백된다 — 상태도 되돌아가므로
+                // "DB는 환불, PG는 승인"인 어긋난 상태가 남지 않는다.
+                // 소비가 멱등하므로 재시도되고, 계속 실패하면 DLQ로 간다.
+                paymentGateway.cancel(payment.getPgTransactionId());
+
                 outboxWriter.write(AGGREGATE, String.valueOf(payment.getId()), "PaymentRefunded", Map.of(
                         "paymentId", payment.getId(),
                         "subscriptionId", subscriptionId,
@@ -133,13 +146,13 @@ public class PaymentService {
     }
 
     /**
-     * 실제 청구. PG 연동 전까지는 mock이다 (P-01).
-     * PG를 붙일 때 이 메서드 안만 교체하면 된다.
+     * 실제 청구. PG 호출은 {@link PaymentGateway} 뒤에 있다 (D-39).
      *
-     * @return 승인 여부
+     * @return PG 승인 결과. 호출 측이 재시도 여부를 판단할 수 있도록
+     *         승인 여부만이 아니라 거절 코드와 재시도 가능 여부까지 돌려준다
      */
-    private boolean charge(String eventId, Long subscriptionId, Long memberId, Long amount, int cycle,
-                           boolean terminalOnFailure) {
+    private PgApproval charge(String eventId, Long subscriptionId, Long memberId, Long amount, int cycle,
+                              boolean terminalOnFailure) {
         // 선검사로 흔한 중복(재전송·재실행)을 걸러낸다.
         //
         // 제약 위반을 잡아서 무시하는 방식은 쓸 수 없다. 트랜잭션 안에서
@@ -151,12 +164,23 @@ public class PaymentService {
         // 스케줄러가 그 건만 로그로 남기고 다음 건으로 넘어간다.
         if (paymentRepository.existsBySubscriptionIdAndBillingCycle(subscriptionId, cycle)) {
             log.info("이미 청구된 회차, 무시: subscriptionId={} cycle={}", subscriptionId, cycle);
-            return false;
+            // 재시도 대상이 아니다 — 이미 처리된 회차다.
+            return PgApproval.declined("DUPLICATE_CYCLE", false);
         }
 
-        boolean approved = amount != null && amount > 0;
+        // PG에 실제로 승인을 요청한다 (D-39). 멱등키를 함께 넘기므로
+        // 타임아웃 후 재시도해도 PG가 같은 승인으로 처리한다.
+        PgApproval result = paymentGateway.approve(
+                "sub-" + subscriptionId + "-cycle-" + cycle,
+                amount == null ? 0 : amount,
+                eventId);
+        boolean approved = result.approved();
 
-        if (!approved && !terminalOnFailure) {
+        // 재시도해도 소용없는 거절(분실·도난 등)은 dunning을 돌리지 않는다 (D-37 연결).
+        // 3일씩 3번 더 긁어봐야 같은 답이 오고, 그 사이 회원은 서비스를 쓴다.
+        boolean giveUpNow = !approved && !result.retryable();
+
+        if (!approved && !terminalOnFailure && !giveUpNow) {
             // 재시도가 남은 실패는 Payment 행으로 남기지 않는다 (D-37).
             //
             // (subscription_id, billing_cycle) unique 제약(D-26) 때문이다 —
@@ -164,13 +188,15 @@ public class PaymentService {
             //
             // 중복 청구 방지는 그대로다: 실제로 승인된 건만 행이 생기고,
             // 그 순간부터 같은 회차는 제약이 막는다. 시도 횟수는 스케줄의 retry_count가 센다.
-            log.info("정기 결제 승인 거절(재시도 예정): subscriptionId={} cycle={}", subscriptionId, cycle);
-            return false;
+            log.info("정기 결제 승인 거절(재시도 예정): subscriptionId={} cycle={} code={}",
+                    subscriptionId, cycle, result.declineCode());
+            return result;
         }
 
         Payment payment = approved
-                ? Payment.approved(subscriptionId, memberId, amount, eventId, cycle)
-                : Payment.failed(subscriptionId, memberId, amount == null ? 0 : amount, eventId, cycle);
+                ? Payment.approved(subscriptionId, memberId, amount, eventId, cycle, result.transactionId())
+                : Payment.failed(subscriptionId, memberId, amount == null ? 0 : amount, eventId, cycle,
+                        result.declineCode());
 
         paymentRepository.saveAndFlush(payment);
 
@@ -188,9 +214,11 @@ public class PaymentService {
                     "subscriptionId", subscriptionId,
                     "memberId", memberId,
                     "billingCycle", cycle,
-                    "reason", "invalid amount"
+                    // 거절 사유를 그대로 싣는다 — subscription 로그에서 "왜 끊겼나"를
+                    // 결제 서비스까지 가지 않고 알 수 있다.
+                    "reason", String.valueOf(result.declineCode())
             ));
         }
-        return approved;
+        return result;
     }
 }
