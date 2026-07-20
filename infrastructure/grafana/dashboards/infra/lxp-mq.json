@@ -1,0 +1,510 @@
+{
+  "uid": "lxp-mq",
+  "title": "RabbitMQ — 메시지 흐름",
+  "description": "사가(D-30·D-31)와 DLQ(lxp.dlx)가 이 브로커를 지나간다. D-62 이전에는 스크레이프 대상이 아니어서 큐 적체를 볼 방법이 아예 없었다.",
+  "tags": [
+    "lxp",
+    "rabbitmq",
+    "infra"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "stat",
+      "title": "DLQ 적체",
+      "description": "처리에 반복 실패해 lxp.dlx로 떨어진 메시지. 0이 아니면 사가 어딘가가 계속 실패하고 있다는 뜻이고, 그 메시지는 아무도 다시 읽지 않는다. 이 대시보드에서 가장 먼저 볼 숫자다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rabbitmq_queue_messages{queue=\"lxp.dead-letter\"})",
+          "legendFormat": "DLQ",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "stat",
+      "title": "대기 중인 메시지",
+      "description": "DLQ를 뺀 나머지 큐에서 아직 소비되지 않은 메시지. 잠깐 쌓이는 것은 정상이고, 줄지 않고 계속 오르면 컨슈머가 못 따라가거나 죽은 것이다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rabbitmq_queue_messages_ready{queue!=\"lxp.dead-letter\"})",
+          "legendFormat": "대기",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "stat",
+      "title": "처리 중 (unacked)",
+      "description": "컨슈머가 받아갔지만 아직 ack하지 않은 메시지. 이 값이 높은 채로 멈춰 있으면 컨슈머가 한 메시지에서 막혀 있다는 신호다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rabbitmq_queue_messages_unacked)",
+          "legendFormat": "unacked",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "stat",
+      "title": "연결 / 채널",
+      "description": "서비스들이 붙어 있는 수. 갑자기 0에 가까워지면 브로커가 아니라 서비스 쪽이 끊긴 것이다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rabbitmq_connections)",
+          "legendFormat": "연결",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          },
+          "instant": true
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rabbitmq_channels)",
+          "legendFormat": "채널",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          },
+          "instant": true
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "value_and_name"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "timeseries",
+      "title": "큐별 대기 메시지",
+      "description": "어느 큐가 막혔는지 본다. 기본 /metrics 는 전체 합계만 주고 queue 라벨이 없어서 이 그림을 그릴 수 없다 — per-object 경로를 쓰는 이유다(D-62).",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rabbitmq_queue_messages_ready",
+          "legendFormat": "{{queue}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "lxp.dead-letter"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "id": 6,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "timeseries",
+      "title": "큐별 컨슈머 수",
+      "description": "0이 된 큐가 있으면 그 큐의 메시지는 아무도 가져가지 않는다. 서비스는 살아 있는데 리스너만 죽은 경우가 여기서 드러난다 — up 지표로는 잡히지 않는 종류다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rabbitmq_queue_consumers",
+          "legendFormat": "{{queue}}",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2,
+            "drawStyle": "line",
+            "lineInterpolation": "stepAfter"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "timeseries",
+      "title": "발행 / 전달 처리량",
+      "description": "들어오는 양과 나가는 양. 두 선이 벌어지면 그 차이가 곧 큐에 쌓이는 속도다. 위의 \"큐별 대기 메시지\"가 오르는 이유를 여기서 확인한다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(rabbitmq_channel_messages_published_total[1m]))",
+          "legendFormat": "발행",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(rabbitmq_channel_messages_delivered_total[1m]))",
+          "legendFormat": "전달",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "type": "timeseries",
+      "title": "재전달 / ack",
+      "description": "재전달(redelivered)은 소비가 실패해 다시 온 메시지다. 꾸준히 오르면 DLQ로 가기 직전 상태이고, D-37의 dunning 재시도와는 다른 층위의 실패다 — 이쪽은 메시지 처리 자체가 실패한 것이다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(rabbitmq_channel_messages_redelivered_total[1m]))",
+          "legendFormat": "재전달",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(rabbitmq_channel_messages_acked_total[1m]))",
+          "legendFormat": "ack",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "재전달"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      }
+    }
+  ]
+}
