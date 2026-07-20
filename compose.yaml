@@ -38,6 +38,12 @@ services:
     container_name: lxp-prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
+      # k6가 부하 결과를 밀어넣는다 (D-59). 기본으로 꺼져 있어
+      # POST /api/v1/write가 404를 준다.
+      #
+      # 스크레이프로는 k6를 담을 수 없다 — 부하가 끝나면 컨테이너가
+      # 사라져서 긁을 대상이 없다. 미는 쪽이 맞다.
+      - --web.enable-remote-write-receiver
     volumes:
       - ./infrastructure/prometheus/prometheus-docker.yml:/etc/prometheus/prometheus.yml:ro
     ports:

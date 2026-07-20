@@ -1,0 +1,477 @@
+{
+  "uid": "lxp-k6",
+  "title": "k6 부하 테스트",
+  "description": "k6가 Prometheus remote write로 밀어넣은 결과 (D-59). k6는 웹 UI가 없어 터미널 출력이 사라지면 지난 실행을 비교할 수 없다. 여기 남긴다.",
+  "tags": [
+    "lxp",
+    "k6"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "refresh": "10s",
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "templating": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "총 요청 수",
+      "description": "이번 실행에서 k6가 보낸 요청 수. 서비스가 받은 수(개요 대시보드)와 대조하면 유실 여부를 알 수 있다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time(k6_http_reqs_total[$__range])",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "체크 성공률",
+      "description": "스크립트의 check()가 통과한 비율. 100%가 아니면 응답이 기대와 달랐다는 뜻이다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time(k6_checks_rate[$__range]) * 100",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "min": 0,
+          "max": 100,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 99
+              },
+              {
+                "color": "green",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "실패한 요청",
+      "description": "HTTP 실패 수. 임계값은 스크립트에서 rate<0.01로 잡혀 있고 넘으면 k6가 종료 코드 99로 실패한다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time(k6_http_req_failed_rate[$__range])",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "최대 동시 사용자 (VU)",
+      "description": "스크립트는 1 → 5 → 20으로 올렸다가 0으로 내린다. 워밍업 구간이 통계를 오염시키지 않게 하려는 것이다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max_over_time(k6_vus[$__range])",
+          "instant": true,
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "purple",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "동시 사용자 추이",
+      "description": "부하 프로파일. 여기 모양과 아래 지연 그래프를 겹쳐 보면 어느 부하에서 느려지는지 알 수 있다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "k6_vus",
+          "legendFormat": "VU",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "요청 지연 (k6 관점)",
+      "description": "클라이언트가 실제로 기다린 시간. 개요 대시보드의 p95는 서버가 처리한 시간이라 네트워크·큐잉이 빠져 있다. 둘을 비교하면 어디서 시간이 드는지 갈린다. k6는 지연을 초 단위로 보낸다 — ms로 두면 1000배 작게 보인다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "k6_http_req_duration_p95",
+          "legendFormat": "p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "k6_http_req_duration_p99",
+          "legendFormat": "p99",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        },
+        {
+          "refId": "C",
+          "expr": "k6_http_req_duration_avg",
+          "legendFormat": "평균",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        },
+        {
+          "refId": "D",
+          "expr": "k6_http_req_duration_max",
+          "legendFormat": "최댓값",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 0,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "인증 경로 vs 공개 경로",
+      "description": "인증 경로는 JWKS 검증 + introspection(D-35) + 서비스 토큰 발급(D-33)을 포함한다. 두 선의 차이가 그 비용이다. k6는 지연을 초 단위로 보낸다 — ms로 두면 1000배 작게 보인다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "k6_lxp_authed_latency_p95",
+          "legendFormat": "인증 경로 p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "k6_lxp_public_latency_p95",
+          "legendFormat": "공개 경로 p95",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "송수신 데이터량",
+      "description": "부하 중 오간 바이트. 응답이 커지면 지연보다 여기가 먼저 늘어난다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "lxp-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(k6_data_received_total[1m])",
+          "legendFormat": "수신",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        },
+        {
+          "refId": "B",
+          "expr": "rate(k6_data_sent_total[1m])",
+          "legendFormat": "송신",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "lxp-prometheus"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "Bps",
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 2
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "mean",
+            "max"
+          ]
+        }
+      }
+    }
+  ]
+}
