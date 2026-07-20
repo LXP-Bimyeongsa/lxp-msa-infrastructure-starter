@@ -13,6 +13,9 @@ datasources:
 
   - name: Loki
     type: loki
+    # Prometheus와 같은 이유로 고정한다 (D-60). 비워두면 Grafana가
+    # 임의 값을 만들어 대시보드 패널이 데이터소스를 잃는다.
+    uid: lxp-loki
     access: proxy
     url: http://loki:3100
     editable: true
