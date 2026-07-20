@@ -16,7 +16,7 @@ services:
     build:
       context: ./ci
       dockerfile: Dockerfile
-    image: lxp/jenkins:2.516.1-jdk17
+    image: lxp/jenkins:2.568.1-jdk21
     container_name: lxp-jenkins
     user: root                       # 호스트 docker.sock이 root 소유라 필요하다
     environment:
