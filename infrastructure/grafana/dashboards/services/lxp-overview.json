@@ -370,7 +370,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "로그 발생량 (서비스별)",
-      "description": "서비스가 실제로 로그를 남기는 양. 평소 INFO 레벨에서는 요청마다 찍지 않으므로 낮게 유지되는 것이 정상이다. 갑자기 치솟으면 예외가 반복되고 있다는 뜻이다.",
+      "description": "D-64 이후 service가 라벨이라 파일 경로가 아니라 서비스 이름으로 묶인다. 평소 INFO에서는 요청마다 찍지 않으므로 낮게 유지되는 것이 정상이고, 치솟으면 예외가 반복되고 있다는 뜻이다.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -384,8 +384,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (filename) (count_over_time({job=\"lxp-services\"}[1m]))",
-          "legendFormat": "{{filename}}",
+          "expr": "sum by (service) (count_over_time({job=\"lxp-services\"}[1m]))",
+          "legendFormat": "{{service}}",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -420,7 +420,7 @@
       "id": 8,
       "type": "logs",
       "title": "오류 로그 (ERROR · WARN)",
-      "description": "D-47 이후 예외 원인(cause)과 스택트레이스가 남는다. 그 전에는 \"실패했다\"만 있고 \"왜\"가 없었다.",
+      "description": "정규식이 아니라 level 라벨로 거른다 (D-64). 평문을 |~ \" (ERROR|WARN) \" 로 긁던 시절에는 형식이 조금만 달라져도 조용히 0건이 됐다 — 필터가 틀렸는데 \"오류가 없다\"로 보이는 것이 가장 나쁘다.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -434,7 +434,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{job=\"lxp-services\"} |~ ` (ERROR|WARN) `",
+          "expr": "{job=\"lxp-services\", level=~\"ERROR|WARN\"} | json | line_format \"{{.service_name}} · {{.log_logger}} — {{.message}}\"",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -456,7 +456,7 @@
       "id": 9,
       "type": "logs",
       "title": "전체 로그 (최신순)",
-      "description": "로그 줄에 [traceId,spanId]가 붙어 있다. 그 traceId로 Zipkin에서 같은 요청의 전체 경로를 볼 수 있다.",
+      "description": "저장된 원문은 ECS JSON이다. 여기서는 읽기 좋게 한 줄로 접어 보여주고, 줄을 펼치면 traceId를 포함한 모든 필드가 나온다. 그 traceId로 Zipkin에서 같은 요청의 전체 경로를 볼 수 있다.",
       "gridPos": {
         "h": 10,
         "w": 24,
@@ -470,7 +470,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "{job=\"lxp-services\"}",
+          "expr": "{job=\"lxp-services\"} | json | line_format \"{{.service_name}} · {{.log_logger}} — {{.message}}\"",
           "queryType": "range",
           "datasource": {
             "type": "loki",
@@ -485,6 +485,102 @@
         "enableLogDetails": true,
         "dedupStrategy": "none",
         "prettifyLogMessage": false
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "로그 레벨 분포",
+      "description": "level이 라벨이 되어 비로소 그릴 수 있게 된 그림이다. WARN·ERROR가 평소 수준을 벗어나는 순간을 지표(위쪽 패널)와 같은 시간축에서 대조할 수 있다.",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 39
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "lxp-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (level) (count_over_time({job=\"lxp-services\"}[1m]))",
+          "legendFormat": "{{level}}",
+          "queryType": "range",
+          "datasource": {
+            "type": "loki",
+            "uid": "lxp-loki"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 30,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ERROR"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "WARN"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "INFO"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
       }
     }
   ],

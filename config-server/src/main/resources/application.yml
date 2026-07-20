@@ -49,3 +49,14 @@ logging:
     name: ${LOG_DIR:../infrastructure/logs}/${spring.application.name}.log
   pattern:
     correlation: "[%X{traceId:-},%X{spanId:-}] "
+  # config-repo/application.yml과 같은 내용을 여기 한 번 더 둔다 (D-64).
+  # 위 query-passing(D-43)과 같은 이유다 — config-server는 자기 자신에게서
+  # 설정을 받아올 수 없어, 공용 파일에만 두면 6개 중 이것 하나만 평문으로
+  # 남는다. 실제로 그렇게 됐고, Loki에서 config-server만 level 라벨이
+  # 없는 채로 섞여 파싱 오류를 냈다.
+  structured:
+    format:
+      file: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
