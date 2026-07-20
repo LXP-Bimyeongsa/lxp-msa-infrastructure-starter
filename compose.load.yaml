@@ -7,8 +7,22 @@
 #   docker compose -f compose.load.yaml run --rm k6 \
 #     run -o experimental-prometheus-rw /scripts/smoke.js
 #
-# k6는 웹 UI가 없다. 실행하면 결과를 찍고 컨테이너가 종료된다.
-# 지난 실행과 비교하려면 Prometheus로 밀어 남겨야 한다.
+#   # 실행 중 실시간 화면을 보려면 (D-61)
+#   docker compose -f compose.load.yaml run --rm --service-ports k6 \
+#     run /scripts/smoke.js
+#   → http://localhost:5665
+#
+# --service-ports가 반드시 필요하다. `run`은 `up`과 달리 ports를
+# 기본으로 게시하지 않아서, 빼면 컨테이너 안에서만 열리고
+# 브라우저로는 닿지 않는다.
+#
+# Git Bash에서는 앞에 MSYS_NO_PATHCONV=1 을 붙인다. 안 붙이면
+# /scripts/smoke.js 를 윈도우 경로로 바꿔버려서
+# "C:/Program Files/Git/scripts/smoke.js 를 찾을 수 없다"로 죽는다.
+#
+# 실행이 끝나면 컨테이너가 사라지므로 화면도 함께 사라진다.
+# 남기려면 아래 K6_WEB_DASHBOARD_EXPORT가 HTML로 떨궈준다.
+# 지난 실행과 비교하는 것은 여전히 Prometheus 쪽이다(D-59).
 #
 # 별도 파일로 두는 이유 — 부하 테스트는 상시 기동할 것이 아니다.
 # compose.yaml에 넣으면 up 할 때마다 같이 뜨거나, 뜨자마자 끝나서
@@ -24,6 +38,11 @@ services:
     container_name: lxp-k6
     volumes:
       - ./infrastructure/k6:/scripts:ro
+      # 웹 대시보드가 떨구는 HTML 보고서를 호스트로 꺼낸다 (D-61).
+      - ./infrastructure/k6/reports:/reports
+    ports:
+      # k6 내장 웹 대시보드. `run`에서는 --service-ports를 붙여야 게시된다.
+      - "5665:5665"
     environment:
       GATEWAY_URL: ${K6_GATEWAY_URL:-http://gateway:8080}
       KEYCLOAK_URL: http://keycloak:8080
@@ -38,6 +57,17 @@ services:
       # 히스토그램으로 보내야 Grafana에서 백분위를 계산할 수 있다.
       # 기본값(counter/gauge)으로는 p95를 그릴 수 없다.
       K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,max
+      # 내장 웹 대시보드 (D-61). Prometheus 경로와 목적이 다르다 —
+      # 이쪽은 "지금 돌고 있는 이번 실행"을 보는 화면이고,
+      # Prometheus는 지난 실행과 비교하기 위한 저장소다.
+      K6_WEB_DASHBOARD: "true"
+      # 0.0.0.0으로 열지 않으면 컨테이너 루프백에만 바인딩돼
+      # 포트를 게시해도 호스트에서 닿지 않는다.
+      K6_WEB_DASHBOARD_HOST: 0.0.0.0
+      K6_WEB_DASHBOARD_PORT: "5665"
+      # 실행이 끝나면 컨테이너와 함께 화면이 사라진다.
+      # 자기 완결형 HTML로 떨궈 두면 나중에 열어볼 수 있다.
+      K6_WEB_DASHBOARD_EXPORT: /reports/k6-report.html
     networks: [lxp-net]
 
 networks:
