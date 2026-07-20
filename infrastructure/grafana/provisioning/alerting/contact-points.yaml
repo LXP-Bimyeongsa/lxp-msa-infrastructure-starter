@@ -1,0 +1,28 @@
+# 알림 수신처 (D-54)
+#
+# webhook URL은 환경변수로 주입한다. 여기 적으면 저장소에 남고,
+# Slack webhook URL은 그 자체가 인증 수단이라 아는 사람은 누구나
+# 그 채널에 글을 쓸 수 있다.
+#
+# 값이 비어 있으면 Grafana는 전송을 시도하고 실패로 기록한다.
+# 알림 규칙이 도는지(Firing까지 가는지)는 그것과 무관하게 확인할 수 있다.
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: slack
+    receivers:
+      - uid: lxp-slack
+        type: slack
+        settings:
+          url: ${SLACK_WEBHOOK_URL}
+          # 제목에 상태를 앞세운다. 채널에서 목록으로 볼 때
+          # 무엇이 터졌는지 먼저 읽혀야 한다.
+          title: '[{{ .Status | toUpper }}] {{ .CommonLabels.alertname }}'
+          text: |
+            {{ range .Alerts }}
+            *{{ .Labels.alertname }}* — {{ .Annotations.summary }}
+            {{ if .Annotations.description }}{{ .Annotations.description }}{{ end }}
+            {{ if .Labels.instance }}대상: `{{ .Labels.instance }}`{{ end }}
+            {{ end }}
