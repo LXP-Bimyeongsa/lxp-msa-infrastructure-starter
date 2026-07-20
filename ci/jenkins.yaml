@@ -24,6 +24,21 @@ jenkins:
   # 에이전트까지 확장해야 해서, 로컬 단일 노드에서는 이득이 없다.
   numExecutors: 2
 
+# 레지스트리 자격증명 (D-50).
+#
+# 값은 환경변수로 주입한다 — 여기 적으면 저장소에 평문으로 남는다.
+# Jenkinsfile은 이 id로만 참조하고 실제 값은 모른다.
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - usernamePassword:
+              scope: GLOBAL
+              id: "registry-credentials"
+              description: "이미지 레지스트리 push 계정"
+              username: "${REGISTRY_USERNAME}"
+              password: "${REGISTRY_PASSWORD}"
+
 unclassified:
   location:
     # 빌드 링크에 쓰인다. 비워두면 Jenkins가 경고를 띄운다.

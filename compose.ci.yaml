@@ -10,6 +10,39 @@
 
 services:
 
+  # 이미지 레지스트리 (D-50).
+  #
+  # Docker Hub 대신 로컬에 둔다 — 계정 없이도 push/pull과 자격증명 처리를
+  # 그대로 배울 수 있고, 학습용 이미지를 공개 레지스트리에 올리지 않아도 된다.
+  # Docker Hub로 바꾸려면 .env의 REGISTRY_HOST와 자격증명만 교체하면 된다.
+  #
+  # 호스트 5000 포트로 낸다. Jenkins의 docker CLI는 호스트 데몬을 쓰므로(DooD)
+  # localhost:5000이 곧 이 컨테이너다. Docker는 localhost 레지스트리를
+  # 자동으로 insecure로 취급하니 TLS 인증서나 daemon.json 수정이 필요 없다.
+  registry:
+    image: registry:2
+    container_name: lxp-registry
+    environment:
+      REGISTRY_AUTH: htpasswd
+      REGISTRY_AUTH_HTPASSWD_REALM: "LXP Registry"
+      REGISTRY_AUTH_HTPASSWD_PATH: /auth/htpasswd
+      # 삭제 API를 켠다. 학습 중 태그를 지우고 다시 밀어볼 일이 있다.
+      REGISTRY_STORAGE_DELETE_ENABLED: "true"
+    volumes:
+      - ./infrastructure/registry/htpasswd:/auth/htpasswd:ro
+      - registry-data:/var/lib/registry
+    ports:
+      - "${REGISTRY_PORT:-5000}:5000"
+    restart: on-failure:3
+    healthcheck:
+      # 인증을 켰으므로 / 는 401을 준다. 401이 곧 "살아 있고 인증을 요구한다"다.
+      test: ["CMD-SHELL", "wget -q -S -O /dev/null http://localhost:5000/v2/ 2>&1 | grep -q '401'"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks: [lxp-net]
+
   jenkins:
     # 공식 이미지에는 docker CLI가 없어서 "Docker 이미지 빌드" 단계가
     # `docker: not found`로 실패한다. ci/Dockerfile에서 CLI만 얹는다 (D-38).
@@ -28,6 +61,12 @@ services:
       # webhook을 쓰는 동안 외부에서 닿는 주소 (D-47).
       # cloudflared 무료 터널은 켤 때마다 주소가 바뀌므로 .env에서 주입한다.
       JENKINS_URL: ${JENKINS_URL:-http://localhost:9080/}
+      # 레지스트리 자격증명 (D-50). jenkins.yaml이 이 값으로
+      # registry-credentials를 만들고, Jenkinsfile은 id로만 참조한다.
+      REGISTRY_USERNAME: ${REGISTRY_USERNAME:-lxp}
+      REGISTRY_PASSWORD: ${REGISTRY_PASSWORD:-}
+      # 파이프라인이 push할 주소. Docker Hub로 옮기면 이 값만 바꾼다.
+      REGISTRY_HOST: ${REGISTRY_HOST:-localhost:5000}
     ports:
       - "9080:8080"
       - "50000:50000"                # 에이전트 접속용
@@ -51,3 +90,4 @@ networks:
 
 volumes:
   jenkins-data:
+  registry-data:
