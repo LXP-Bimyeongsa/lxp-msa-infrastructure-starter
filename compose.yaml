@@ -65,6 +65,9 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      # 대시보드 JSON (D-57). provisioning/dashboards/dashboards.yaml이
+      # 이 경로를 읽는다.
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
     ports:
       - "3000:3000"
     depends_on:
