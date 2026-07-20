@@ -365,6 +365,127 @@
         }
       },
       "id": 6
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "로그 발생량 (서비스별)",
+      "description": "서비스가 실제로 로그를 남기는 양. 평소 INFO 레벨에서는 요청마다 찍지 않으므로 낮게 유지되는 것이 정상이다. 갑자기 치솟으면 예외가 반복되고 있다는 뜻이다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "lxp-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (filename) (count_over_time({job=\"lxp-services\"}[1m]))",
+          "legendFormat": "{{filename}}",
+          "queryType": "range",
+          "datasource": {
+            "type": "loki",
+            "uid": "lxp-loki"
+          }
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 20,
+            "lineWidth": 1,
+            "stacking": {
+              "mode": "normal"
+            }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "calcs": [
+            "sum"
+          ]
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "logs",
+      "title": "오류 로그 (ERROR · WARN)",
+      "description": "D-47 이후 예외 원인(cause)과 스택트레이스가 남는다. 그 전에는 \"실패했다\"만 있고 \"왜\"가 없었다.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "lxp-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"lxp-services\"} |~ ` (ERROR|WARN) `",
+          "queryType": "range",
+          "datasource": {
+            "type": "loki",
+            "uid": "lxp-loki"
+          }
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false
+      },
+      "expr": "{job=\"lxp-services\"} |~ ` (ERROR|WARN) `"
+    },
+    {
+      "id": 9,
+      "type": "logs",
+      "title": "전체 로그 (최신순)",
+      "description": "로그 줄에 [traceId,spanId]가 붙어 있다. 그 traceId로 Zipkin에서 같은 요청의 전체 경로를 볼 수 있다.",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      },
+      "datasource": {
+        "type": "loki",
+        "uid": "lxp-loki"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "{job=\"lxp-services\"}",
+          "queryType": "range",
+          "datasource": {
+            "type": "loki",
+            "uid": "lxp-loki"
+          }
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "wrapLogMessage": true,
+        "sortOrder": "Descending",
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "prettifyLogMessage": false
+      }
     }
   ],
   "description": "LXP MSA 운영 개요. 서비스 상태·서킷·처리량·지연·오류·힙을 한 화면에서 본다."
