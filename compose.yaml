@@ -52,6 +52,16 @@ services:
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+      # Slack 알림 수신처 (D-54). 프로비저닝 파일이 이 값을 참조한다.
+      # webhook URL은 그 자체가 인증 수단이라 저장소에 두지 않는다 —
+      # .env는 gitignore 대상이다.
+      #
+      # 기본값이 빈 문자열이면 안 된다 — Grafana가 "URL이 없으니 chat API
+      # 모드"로 해석해 recipient를 요구하고, 프로비저닝 전체가 실패해서
+      # 알림 규칙까지 등록되지 않는다. 실제로 그렇게 막혔다.
+      # 그래서 형식만 맞는 플레이스홀더를 둔다. 이 값으로는 전송이 실패하지만
+      # 규칙이 도는지(Firing까지 가는지)는 확인할 수 있다.
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL:-https://hooks.slack.com/services/SET/YOUR/WEBHOOK}
     volumes:
       - grafana-data:/var/lib/grafana
       - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro

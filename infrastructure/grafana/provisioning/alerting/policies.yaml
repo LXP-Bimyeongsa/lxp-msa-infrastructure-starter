@@ -1,0 +1,20 @@
+# 알림 라우팅 (D-54)
+#
+# 지금은 수신처가 하나뿐이라 전부 slack으로 보낸다. 팀이 늘거나
+# 심각도를 나눠야 하면 routes로 severity 라벨을 갈라 붙인다.
+
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: slack
+    # 같은 알림이 반복해서 오지 않도록 묶는다.
+    group_by:
+      - alertname
+      - instance
+    # 처음 뜨고 30초 기다렸다 보낸다. 순간적으로 떴다 사라지는 것까지
+    # 다 보내면 채널이 시끄러워져서 진짜 장애를 놓친다.
+    group_wait: 30s
+    group_interval: 5m
+    # 해결되지 않은 알림을 다시 알리는 주기.
+    repeat_interval: 4h

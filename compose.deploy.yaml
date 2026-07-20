@@ -25,12 +25,28 @@
 # 배포 인스턴스도 같은 이름으로 등록되므로 서비스마다 인스턴스가 2개가
 # 된다. 이는 오류가 아니라 수평 확장과 같은 상태다. D-43의
 # query-passing 덕분에 healthy한 것만 라우팅 대상이 된다.
+#
+# ── compose 서비스 이름을 deploy-로 다르게 두는 이유 (D-55) ──────
+# compose는 서비스 이름을 네트워크 별칭으로 자동 등록한다. 처음에
+# 개발 스택과 같은 이름(gateway, course-service ...)을 썼더니 같은
+# 네트워크에 별칭이 두 개씩 생겼다.
+#
+#   lxp-course-service        -> [lxp-course-service, course-service]
+#   lxp-deploy-course-service -> [lxp-deploy-course-service, course-service]
+#
+# 그러면 course-service:8083 이 둘 중 아무거나로 해석된다. 실제로
+# 개발 course-service를 죽였는데 Prometheus가 배포 인스턴스를 긁어
+# up=1로 남았다 — "죽었는데 정상으로 보이는" 상태다.
+#
+# 서비스가 서로를 찾는 것은 Consul로 하므로 별칭이 겹쳐도 대부분
+# 동작하지만, Prometheus 스크레이프처럼 호스트명을 직접 쓰는 경로가
+# 조용히 엉뚱한 대상을 본다.
 
 name: lxp-deploy
 
 services:
 
-  gateway:
+  deploy-gateway:
     image: ${REGISTRY_HOST:-localhost:5000}/lxp/gateway:${DEPLOY_TAG:-latest}
     container_name: lxp-deploy-gateway
     environment:
@@ -63,7 +79,7 @@ services:
       retries: 20
       start_period: 60s
 
-  member-service:
+  deploy-member-service:
     image: ${REGISTRY_HOST:-localhost:5000}/lxp/member-service:${DEPLOY_TAG:-latest}
     container_name: lxp-deploy-member-service
     environment:
@@ -103,7 +119,7 @@ services:
       retries: 20
       start_period: 60s
 
-  course-service:
+  deploy-course-service:
     image: ${REGISTRY_HOST:-localhost:5000}/lxp/course-service:${DEPLOY_TAG:-latest}
     container_name: lxp-deploy-course-service
     environment:
@@ -138,7 +154,7 @@ services:
       retries: 20
       start_period: 60s
 
-  subscription-service:
+  deploy-subscription-service:
     image: ${REGISTRY_HOST:-localhost:5000}/lxp/subscription-service:${DEPLOY_TAG:-latest}
     container_name: lxp-deploy-subscription-service
     environment:
@@ -174,7 +190,7 @@ services:
       retries: 20
       start_period: 60s
 
-  payment-service:
+  deploy-payment-service:
     image: ${REGISTRY_HOST:-localhost:5000}/lxp/payment-service:${DEPLOY_TAG:-latest}
     container_name: lxp-deploy-payment-service
     environment:

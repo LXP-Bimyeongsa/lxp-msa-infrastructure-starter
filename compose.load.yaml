@@ -1,0 +1,32 @@
+# 부하 테스트 (D-56)
+#
+#   docker compose -f compose.load.yaml run --rm k6 run /scripts/smoke.js
+#
+# 별도 파일로 두는 이유 — 부하 테스트는 상시 기동할 것이 아니다.
+# compose.yaml에 넣으면 up 할 때마다 같이 뜨거나, 뜨자마자 끝나서
+# Exited로 남는다(D-14의 프로파일 분리와 같은 판단).
+#
+# 컨테이너 안에서 도는 이유 — 게이트웨이·Keycloak을 호스트명으로 부르면
+# 포트 매핑과 무관하게 실제 서비스 간 경로와 같은 조건이 된다.
+
+services:
+
+  k6:
+    image: grafana/k6:0.55.0
+    container_name: lxp-k6
+    volumes:
+      - ./infrastructure/k6:/scripts:ro
+    environment:
+      GATEWAY_URL: ${K6_GATEWAY_URL:-http://gateway:8080}
+      KEYCLOAK_URL: http://keycloak:8080
+      KEYCLOAK_REALM: lxp
+      KEYCLOAK_CLIENT: lxp-web
+      # 테스트 계정. 없으면 setup()이 명시적으로 실패한다.
+      TEST_EMAIL: ${K6_TEST_EMAIL:-k6-load@lxp.test}
+      TEST_PASSWORD: ${K6_TEST_PASSWORD:-Passw0rd!23}
+    networks: [lxp-net]
+
+networks:
+  lxp-net:
+    name: lxp-net
+    external: true
