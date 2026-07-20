@@ -13,6 +13,11 @@ workflow-aggregator
 # SCM 폴링 대상
 git
 
+# GitHub webhook 수신 (D-47).
+# /github-webhook/ 엔드포인트를 여는 것이 이 플러그인이다.
+# git 플러그인만으로는 폴링은 되지만 webhook은 받을 수 없다.
+github
+
 # 잡 정의를 코드로 (JCasC의 jobs 섹션이 이걸로 실행된다)
 job-dsl
 
