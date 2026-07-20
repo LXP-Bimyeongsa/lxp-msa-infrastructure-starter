@@ -29,6 +29,26 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
+# 빌드용 JDK 17 (D-48).
+#
+# Jenkins 자신은 21에서 돌지만, 우리 서비스의 build.gradle은 Java 17
+# toolchain을 요구한다. jdk17 이미지에서 jdk21로 올렸더니 Gradle이
+# "Cannot find a Java installation matching {languageVersion=17}"으로
+# 6개 서비스 빌드를 전부 실패시켰다(빌드 #10).
+#
+# "CI가 도는 JVM"과 "우리 코드를 컴파일하는 JVM"은 다른 관심사다.
+# 앞의 것은 최신·패치된 것을 쓰고, 뒤의 것은 서비스가 요구하는 버전을 맞춘다.
+#
+# apt로 깔지 않는 이유 — 이 이미지의 베이스는 Debian 13(trixie)이고
+# 거기엔 openjdk-17 패키지가 없다(21·25만 있다).
+#
+# /usr/lib/jvm은 Gradle이 toolchain을 자동 탐지하는 표준 경로다.
+# 다른 곳에 두면 org.gradle.java.installations.paths를 따로 잡아줘야 한다.
+RUN mkdir -p /usr/lib/jvm/temurin-17 \
+    && curl -fsSL "https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse" \
+        | tar -xz --strip-components=1 -C /usr/lib/jvm/temurin-17 \
+    && /usr/lib/jvm/temurin-17/bin/java -version
+
 # 플러그인을 이미지에 미리 넣는다 (D-40).
 # 설정 마법사로 깔면 컨테이너 볼륨을 지울 때마다 다시 클릭해야 한다.
 COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
