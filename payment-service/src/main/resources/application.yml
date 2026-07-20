@@ -8,7 +8,7 @@ spring:
       host: ${CONSUL_HOST:localhost}
       port: ${CONSUL_PORT:8500}
       discovery:
-        instance-id: ${spring.application.name}-${random.value}
+        instance-id: ${spring.application.name}-${HOSTNAME:${random.value}}
         prefer-ip-address: true
         health-check-path: /actuator/health
         health-check-interval: 10s

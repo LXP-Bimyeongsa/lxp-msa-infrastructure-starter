@@ -38,6 +38,17 @@ spring:
         # 멀쩡한 인스턴스까지 지워버리면 복구 후 다시 등록될 때까지 빈다.
         health-check-critical-timeout: 1m
 
+server:
+  # 종료 시 Consul 등록을 스스로 해제할 시간을 준다 (D-53).
+  #
+  # 없으면 SIGTERM에 즉시 죽어 해제 훅이 돌지 못하고, 등록이 그대로 남는다.
+  # instance-id가 컨테이너마다 고정이라(HOSTNAME) 재기동하면 같은 항목을
+  # 덮어쓰지만, 컨테이너를 새로 만들면 옛 항목이 남는다. D-43의 자동 해제는
+  # critical이 된 뒤에야 걷어내므로 그 사이 목록이 오염된다.
+  shutdown: graceful
+
+spring.lifecycle.timeout-per-shutdown-phase: 20s
+
 logging:
   level:
     root: INFO
