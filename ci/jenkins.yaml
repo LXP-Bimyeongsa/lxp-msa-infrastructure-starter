@@ -26,8 +26,12 @@ jenkins:
 
 unclassified:
   location:
-    # 폴링 로그·빌드 링크에 쓰인다. 비워두면 Jenkins가 경고를 띄운다.
-    url: "http://localhost:9080/"
+    # 빌드 링크에 쓰인다. 비워두면 Jenkins가 경고를 띄운다.
+    #
+    # webhook을 쓰는 동안에는 외부에서 닿는 주소를 넣는다 (D-47).
+    # cloudflared 무료 터널은 실행할 때마다 주소가 바뀌므로 환경변수로 뺐다 —
+    # 여기에 박아두면 터널을 다시 켤 때마다 이 파일을 고쳐야 한다.
+    url: "${JENKINS_URL:-http://localhost:9080/}"
 
 jobs:
   - script: |
@@ -35,15 +39,21 @@ jobs:
         description('''
           변경된 서비스만 골라 빌드한다. 파이프라인 정의는 저장소의 ci/Jenkinsfile에 있다.
 
-          공인 IP가 없어 GitHub webhook을 받을 수 없으므로 폴링으로 시작한다.
-          webhook을 쓸 수 있게 되면 여기와 Jenkinsfile의 triggers를 함께 지운다.
+          GitHub webhook으로 트리거된다 (D-47). 공인 IP가 없으므로
+          cloudflared 터널로 외부 주소를 만들어 GitHub가 찾아올 수 있게 한다.
+          터널이 꺼져 있으면 아무 빌드도 돌지 않는다 — 폴링과 다른 점이다.
         '''.stripIndent())
 
-        // 폴링 주기를 잡에도 둔다.
-        // Jenkinsfile의 triggers는 "한 번 빌드된 뒤"에야 적용되므로,
-        // 여기에 없으면 첫 빌드를 수동으로 돌리기 전까지 폴링이 시작되지 않는다.
+        // webhook 수신 시 빌드한다.
+        //
+        // 폴링을 남겨두지 않는 이유 — 둘 다 켜면 빌드가 돌았을 때
+        // webhook 때문인지 폴링 때문인지 구분할 수 없다. webhook이
+        // 실제로 동작하는지 확인하는 것이 지금 목적이다.
+        //
+        // 잡에도 두는 이유는 폴링 때와 같다. Jenkinsfile의 triggers는
+        // "한 번 빌드된 뒤"에야 적용된다.
         triggers {
-          scm('H/5 * * * *')
+          githubPush()
         }
 
         definition {

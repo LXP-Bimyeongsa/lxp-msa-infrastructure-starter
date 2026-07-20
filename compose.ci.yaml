@@ -25,6 +25,9 @@ services:
       # 비밀번호를 파일에 적지 않고 여기서 주입한다.
       JENKINS_ADMIN_ID: ${JENKINS_ADMIN_ID:-admin}
       JENKINS_ADMIN_PASSWORD: ${JENKINS_ADMIN_PASSWORD:-admin}
+      # webhook을 쓰는 동안 외부에서 닿는 주소 (D-47).
+      # cloudflared 무료 터널은 켤 때마다 주소가 바뀌므로 .env에서 주입한다.
+      JENKINS_URL: ${JENKINS_URL:-http://localhost:9080/}
     ports:
       - "9080:8080"
       - "50000:50000"                # 에이전트 접속용

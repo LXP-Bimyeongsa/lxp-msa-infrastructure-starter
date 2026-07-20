@@ -16,8 +16,15 @@ pipeline {
     }
 
     triggers {
-        // 5분마다 변경 확인. webhook을 쓸 수 있게 되면 이 줄을 지운다.
-        pollSCM('H/5 * * * *')
+        // GitHub webhook 수신 시 빌드 (D-47).
+        //
+        // 폴링에서 넘어왔다. 폴링은 Jenkins가 5분마다 GitHub에 물어보는 방식이라
+        // 공인 IP 없이도 되지만, 최대 5분이 밀리고 변경이 없어도 계속 물어본다.
+        // webhook은 GitHub가 밀어주므로 즉시 돌지만, 반대로 GitHub가 우리를
+        // 찾아올 수 있어야 한다 — cloudflared 터널이 그 역할이다.
+        //
+        // 터널이 꺼지면 아무 빌드도 돌지 않는다. 폴링과 달리 조용히 멈춘다.
+        githubPush()
     }
 
     environment {
