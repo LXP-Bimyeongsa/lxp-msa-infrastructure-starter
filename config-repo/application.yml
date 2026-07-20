@@ -71,7 +71,26 @@ logging:
   level:
     root: INFO
   pattern:
+    # 콘솔용. docker logs 로 볼 때는 사람이 읽는 형태가 낫다.
     correlation: "[%X{traceId:-},%X{spanId:-}] "
+  # 파일로 나가는 로그만 JSON으로 바꾼다 (D-64).
+  #
+  # 평문은 Loki에서 정규식으로 긁는 수밖에 없다. 레벨이 라벨이 아니라
+  # 문자열 한복판에 있으니 |~ " (ERROR|WARN) " 같은 것이 되고,
+  # 형식이 조금만 달라져도 조용히 0건이 된다(D-60에서 실제로 겪었다).
+  # JSON이면 level·service·traceId가 필드라서 Alloy가 라벨로 올릴 수 있다.
+  #
+  # Spring Boot 3.4부터 내장이라 logstash-logback-encoder 의존성도,
+  # 서비스마다 logback-spring.xml을 두는 것도 필요 없다.
+  #
+  # 콘솔은 일부러 평문으로 남긴다 — docker logs 와 IDE 콘솔에서
+  # JSON 한 줄씩 읽는 것은 사람에게 더 나쁘다. 기계가 읽는 쪽만 바꾼다.
+  structured:
+    format:
+      file: ecs
+    ecs:
+      service:
+        name: ${spring.application.name}
 
 # 서비스 간 호출 검증 (D-33).
 # gateway가 붙인 서비스 토큰을 다운스트림이 확인한다. 이 설정을 읽는 것은

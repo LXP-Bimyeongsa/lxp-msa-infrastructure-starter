@@ -1,3 +1,16 @@
+// 로그 수집 파이프라인
+//
+// D-64 전에는 tail 해서 그대로 밀기만 했다. 그래서 Loki에 들어간 것은
+// 평문 한 줄이었고, 레벨로 거르려면 정규식밖에 방법이 없었다.
+//
+//   {job="lxp-services"} |~ " (ERROR|WARN) "
+//
+// 이 방식은 로그 형식이 조금만 달라져도 조용히 0건이 된다 — 실제로
+// D-60에서 \b 이스케이프가 한 단계 소모돼 아무것도 안 잡힌 적이 있다.
+// 필터가 틀렸는데 "오류가 없다"로 보이는 것이 가장 나쁘다.
+//
+// 이제 서비스가 ECS JSON으로 찍으므로(D-64) 여기서 파싱해 라벨로 올린다.
+
 local.file_match "lxp_file_logs" {
   path_targets = [
     {
@@ -9,7 +22,43 @@ local.file_match "lxp_file_logs" {
 
 loki.source.file "lxp_file_logs" {
   targets    = local.file_match.lxp_file_logs.targets
+  forward_to = [loki.process.lxp_logs.receiver]
+}
+
+loki.process "lxp_logs" {
   forward_to = [loki.write.default.receiver]
+
+  // ECS는 중첩 구조다. log.level 은 점 표기의 필드명이 아니라
+  // log 객체 안의 level 이므로 JMESPath로 내려간다.
+  // @timestamp 는 @ 때문에 따옴표로 감싸야 한다.
+  stage.json {
+    expressions = {
+      level   = "log.level",
+      service = "service.name",
+      ts      = "\"@timestamp\"",
+    }
+  }
+
+  // 라벨로 올리는 것은 값 종류가 적은 둘뿐이다.
+  //   level 5종 × service 6종 → 최대 30 스트림
+  //
+  // traceId·spanId는 일부러 라벨로 만들지 않는다. 요청마다 달라서
+  // 스트림이 무한히 갈라지고 Loki가 감당하지 못한다. 대신 저장된
+  // 줄이 JSON 그대로라 조회할 때 `| json | traceId="..."` 로 찾는다.
+  stage.labels {
+    values = {
+      level   = "",
+      service = "",
+    }
+  }
+
+  // 수집 시각이 아니라 서비스가 찍은 시각을 쓴다. 그러지 않으면
+  // 서비스가 잠깐 멈췄다 살아날 때 밀린 로그가 전부 "지금"으로 찍혀
+  // 장애 순간의 순서를 잃는다.
+  stage.timestamp {
+    source = "ts"
+    format = "RFC3339Nano"
+  }
 }
 
 loki.write "default" {
