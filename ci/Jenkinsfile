@@ -149,7 +149,53 @@ pipeline {
                 script {
                     env.CHANGED_SERVICES.split(' ').each { svc ->
                         // Dockerfile이 루트 컨텍스트를 전제로 하므로 -f 로 지정한다.
-                        sh "docker build -f ${svc}/Dockerfile -t lxp/${svc}:${env.GIT_SHORT} -t lxp/${svc}:latest ."
+                        //
+                        // 레지스트리 주소를 태그에 함께 붙인다 (D-50).
+                        // docker push는 태그의 앞부분을 레지스트리 주소로 읽으므로,
+                        // 주소 없는 태그(lxp/gateway)는 Docker Hub로 가려 한다.
+                        sh """
+                            docker build -f ${svc}/Dockerfile \
+                                -t lxp/${svc}:${env.GIT_SHORT} \
+                                -t lxp/${svc}:latest \
+                                -t ${env.REGISTRY_HOST}/lxp/${svc}:${env.GIT_SHORT} \
+                                -t ${env.REGISTRY_HOST}/lxp/${svc}:latest .
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Docker 이미지 푸시') {
+            when {
+                allOf {
+                    expression { env.CHANGED_SERVICES?.trim() }
+                    expression { env.BUILT_BRANCH == 'main' }
+                }
+            }
+            steps {
+                // 자격증명은 Jenkins가 주입한다 (D-50). 파이프라인은 id만 알고
+                // 실제 값은 모른다 — 저장소에도 콘솔 로그에도 남지 않는다.
+                // Jenkins가 로그에서 이 값들을 자동으로 마스킹한다.
+                withCredentials([usernamePassword(
+                        credentialsId: 'registry-credentials',
+                        usernameVariable: 'REG_USER',
+                        passwordVariable: 'REG_PASS')]) {
+                    script {
+                        // --password-stdin을 쓴다. -p는 비밀번호가 프로세스 목록에
+                        // 노출되고 docker가 경고를 낸다.
+                        sh '''
+                            echo "$REG_PASS" | docker login "$REGISTRY_HOST" -u "$REG_USER" --password-stdin
+                        '''
+                        try {
+                            env.CHANGED_SERVICES.split(' ').each { svc ->
+                                sh "docker push ${env.REGISTRY_HOST}/lxp/${svc}:${env.GIT_SHORT}"
+                                sh "docker push ${env.REGISTRY_HOST}/lxp/${svc}:latest"
+                            }
+                        } finally {
+                            // 실패해도 반드시 로그아웃한다. 남겨두면 다음 빌드가
+                            // 이전 빌드의 자격증명으로 돌 수 있다.
+                            sh 'docker logout "$REGISTRY_HOST" || true'
+                        }
                     }
                 }
             }
