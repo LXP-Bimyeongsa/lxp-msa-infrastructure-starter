@@ -76,10 +76,21 @@ pipeline {
                         //
                         // 접두사를 하나씩 나열하지 않고 common-으로 묶는다.
                         // 모듈이 늘 때마다 여기를 고치는 것을 잊으면 같은 구멍이 다시 생긴다.
+                        //
+                        // ci/도 공용이다 (D-49). ci/Dockerfile은 모든 서비스가 빌드되는
+                        // 환경이고 ci/Jenkinsfile은 빌드 방법 자체다. 여기 없으면
+                        // 빌드 환경을 깨는 변경이 "변경 서비스 없음"으로 통과한다.
+                        //
+                        // 실제로 그랬다 — jdk17에서 jdk21로 올린 커밋(D-46)이
+                        // 6개 서비스의 Gradle toolchain을 전부 깨뜨렸는데,
+                        // 그 수정 커밋(D-48)은 ci/Dockerfile만 건드려서 빌드 #11이
+                        // 아무것도 빌드하지 않고 SUCCESS로 끝났다.
+                        // D-38이 common-security를 빠뜨렸던 것과 같은 종류다.
                         def sharedTouched = diff.split('\n').any { path ->
                             path.startsWith('config-repo/') ||
                             path.startsWith('common-') ||
                             path.startsWith('infrastructure/') ||
+                            path.startsWith('ci/') ||
                             path.startsWith('compose') ||
                             path == '.gitattributes'
                         }
