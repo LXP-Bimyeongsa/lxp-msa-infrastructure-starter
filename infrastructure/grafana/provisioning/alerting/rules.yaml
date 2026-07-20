@@ -31,7 +31,11 @@ groups:
             datasourceUid: lxp-prometheus
             model:
               editorMode: code
-              expr: up{job="lxp-docker-services"}
+              # job 필터를 걸지 않는다 (D-62). 걸어두면 스크레이프
+              # 대상을 늘려도 알림은 늘지 않아서, 감시하고 있다고
+              # 믿는 동안 새 대상은 죽어도 조용하다. 실제로 D-54가
+              # 이 필터 탓에 Zipkin을 못 봤다 — 고치려던 바로 그 대상이다.
+              expr: up
               instant: true
               intervalMs: 1000
               maxDataPoints: 43200

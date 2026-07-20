@@ -22,6 +22,9 @@ datasources:
 
   - name: Zipkin
     type: zipkin
+    # 나머지 둘과 같은 이유로 고정한다 (D-62). 지금은 이 데이터소스를
+    # 쓰는 패널이 없어 티가 안 날 뿐이고, 붙이는 순간 같은 문제가 난다.
+    uid: lxp-zipkin
     access: proxy
     url: http://zipkin:9411
     editable: true

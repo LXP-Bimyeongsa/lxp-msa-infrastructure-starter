@@ -1,8 +1,20 @@
+# 스크레이프 설정 — 서비스도 컨테이너로 띄울 때 (compose.yaml)
+#
+# 짝이 되는 파일: prometheus.yml
+#   이쪽(-docker)  서비스가 컨테이너   → 대상이 컨테이너 이름
+#   저쪽(.yml)     서비스를 IDE에서 실행 → 대상이 host.docker.internal
+#
+# 둘 다 살아 있는 파일이다. 인프라 job은 양쪽이 같아야 하므로
+# 한쪽만 고치지 않는다 — compose.yaml로 띄웠을 때는 보이는데
+# compose.infra.yaml로 띄웠을 때는 안 보이는 상태가 된다.
+
 global:
   scrape_interval: 10s
   evaluation_interval: 10s
 
 scrape_configs:
+
+  # ── 우리가 만든 서비스 ─────────────────────────────────────
   - job_name: "lxp-docker-services"
     metrics_path: /actuator/prometheus
     static_configs:
@@ -13,3 +25,47 @@ scrape_configs:
           - "course-service:8083"
           - "subscription-service:8084"
           - "payment-service:8085"
+
+  # ── 인프라 (D-62) ─────────────────────────────────────────
+  #
+  # 여기가 비어 있던 동안 up 시계열은 위 6개에만 존재했다.
+  # "서비스 다운" 알림은 up == 0 으로 판정하므로, up이 없는 대상은
+  # 죽어도 알림이 가지 않는다 — D-44에서 Zipkin이 44분간 죽은 것을
+  # 아무도 몰랐던 그 구멍이, 그걸 고치려고 만든 알림(D-54) 뒤에도
+  # 그대로 남아 있었다.
+  #
+  # RabbitMQ가 특히 중요하다. 사가(D-30·D-31)와 DLQ(lxp.dlx)가
+  # 여기를 지나가는데 큐 적체를 볼 방법이 없었다.
+  - job_name: "lxp-infra"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "loki:3100"
+          - "grafana:3000"
+          - "alloy:12345"
+
+  # RabbitMQ는 per-object 경로를 쓴다.
+  # 기본 /metrics 는 전체 합계만 준다 — queue 라벨이 없어서
+  # "메시지 0건"까지는 알아도 어느 큐가 막혔는지는 모른다.
+  # DLQ(lxp.dead-letter) 적체를 보는 것이 목적이므로 큐별이어야 한다.
+  # 카디널리티가 늘지만 큐가 6개뿐이라 감당된다(448 지표).
+  - job_name: "lxp-rabbitmq"
+    metrics_path: /metrics/per-object
+    static_configs:
+      - targets:
+          - "rabbitmq:15692"
+
+  # Zipkin만 경로가 다르다(Spring Boot 기반이라 actuator 아래에 있다).
+  # metrics_path는 job 단위 설정이라 위와 합칠 수 없다.
+  - job_name: "lxp-zipkin"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - "zipkin:9411"
+
+# 아직 못 넣은 것 (P-21)
+#   Consul       telemetry.prometheus_retention_time 설정 필요
+#   Keycloak     KC_METRICS_ENABLED=true 필요
+#   MinIO        기본이 인증 필요 (MINIO_PROMETHEUS_AUTH_TYPE=public)
+#   Jenkins      prometheus 플러그인 필요
+#   MySQL·Mongo  exporter 컨테이너가 별도로 필요 (+2개, D-14와 상충)

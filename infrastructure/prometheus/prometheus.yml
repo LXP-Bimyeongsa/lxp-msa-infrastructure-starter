@@ -1,8 +1,20 @@
+# 스크레이프 설정 — 서비스를 IDE에서 직접 실행할 때 (compose.infra.yaml)
+#
+# 짝이 되는 파일: prometheus-docker.yml
+#   저쪽(-docker)  서비스가 컨테이너   → 대상이 컨테이너 이름
+#   이쪽(.yml)     서비스를 IDE에서 실행 → 대상이 host.docker.internal
+#
+# 둘 다 살아 있는 파일이다. 인프라 job은 양쪽이 같아야 하므로
+# 한쪽만 고치지 않는다 — compose.yaml로 띄웠을 때는 보이는데
+# compose.infra.yaml로 띄웠을 때는 안 보이는 상태가 된다.
+
 global:
   scrape_interval: 10s
   evaluation_interval: 10s
 
 scrape_configs:
+
+  # ── 우리가 만든 서비스 (호스트에서 실행 중) ────────────────
   - job_name: "lxp-local-services"
     metrics_path: /actuator/prometheus
     static_configs:
@@ -13,3 +25,37 @@ scrape_configs:
           - "host.docker.internal:8083"
           - "host.docker.internal:8084"
           - "host.docker.internal:8085"
+
+  # ── 인프라 (D-62) ─────────────────────────────────────────
+  # 인프라는 이 모드에서도 컨테이너로 뜨므로 대상은 컨테이너 이름
+  # 그대로다. prometheus-docker.yml의 같은 블록과 내용이 일치해야 한다.
+  - job_name: "lxp-infra"
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "loki:3100"
+          - "grafana:3000"
+          - "alloy:12345"
+
+  # RabbitMQ는 per-object 경로를 쓴다.
+  # 기본 /metrics 는 전체 합계만 준다 — queue 라벨이 없어서
+  # "메시지 0건"까지는 알아도 어느 큐가 막혔는지는 모른다.
+  # DLQ(lxp.dead-letter) 적체를 보는 것이 목적이므로 큐별이어야 한다.
+  - job_name: "lxp-rabbitmq"
+    metrics_path: /metrics/per-object
+    static_configs:
+      - targets:
+          - "rabbitmq:15692"
+
+  - job_name: "lxp-zipkin"
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets:
+          - "zipkin:9411"
+
+# 아직 못 넣은 것 (P-21)
+#   Consul       telemetry.prometheus_retention_time 설정 필요
+#   Keycloak     KC_METRICS_ENABLED=true 필요
+#   MinIO        기본이 인증 필요 (MINIO_PROMETHEUS_AUTH_TYPE=public)
+#   Jenkins      prometheus 플러그인 필요
+#   MySQL·Mongo  exporter 컨테이너가 별도로 필요 (+2개, D-14와 상충)
