@@ -1,6 +1,14 @@
 # 부하 테스트 (D-56)
 #
+#   # 터미널 출력만 (빠른 확인용)
 #   docker compose -f compose.load.yaml run --rm k6 run /scripts/smoke.js
+#
+#   # Grafana에서도 보려면 (D-59)
+#   docker compose -f compose.load.yaml run --rm k6 \
+#     run -o experimental-prometheus-rw /scripts/smoke.js
+#
+# k6는 웹 UI가 없다. 실행하면 결과를 찍고 컨테이너가 종료된다.
+# 지난 실행과 비교하려면 Prometheus로 밀어 남겨야 한다.
 #
 # 별도 파일로 두는 이유 — 부하 테스트는 상시 기동할 것이 아니다.
 # compose.yaml에 넣으면 up 할 때마다 같이 뜨거나, 뜨자마자 끝나서
@@ -24,6 +32,12 @@ services:
       # 테스트 계정. 없으면 setup()이 명시적으로 실패한다.
       TEST_EMAIL: ${K6_TEST_EMAIL:-k6-load@lxp.test}
       TEST_PASSWORD: ${K6_TEST_PASSWORD:-Passw0rd!23}
+      # 결과를 Prometheus로 민다 (D-59). k6는 웹 UI가 없어서
+      # 터미널 출력이 사라지면 지난 실행을 비교할 수 없다.
+      K6_PROMETHEUS_RW_SERVER_URL: http://prometheus:9090/api/v1/write
+      # 히스토그램으로 보내야 Grafana에서 백분위를 계산할 수 있다.
+      # 기본값(counter/gauge)으로는 p95를 그릴 수 없다.
+      K6_PROMETHEUS_RW_TREND_STATS: p(95),p(99),avg,max
     networks: [lxp-net]
 
 networks:
