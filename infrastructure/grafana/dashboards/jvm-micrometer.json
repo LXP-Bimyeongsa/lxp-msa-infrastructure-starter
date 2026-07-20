@@ -26,7 +26,7 @@
       }
     ]
   },
-  "description": "Dashboard for Micrometer instrumented applications (Java, Spring Boot, Micronaut)",
+  "description": "grafana.com 4701 템플릿을 우리 라벨(job/instance)에 맞게 이식하고 한글화한 것",
   "editable": true,
   "gnetId": 4701,
   "graphTooltip": 1,
@@ -108,7 +108,7 @@
             }
           ],
           "thresholds": "",
-          "title": "Uptime",
+          "title": "가동 시간",
           "transparent": false,
           "type": "singlestat",
           "valueFontSize": "80%",
@@ -191,7 +191,7 @@
             }
           ],
           "thresholds": "",
-          "title": "Start time",
+          "title": "기동 시각",
           "transparent": false,
           "type": "singlestat",
           "valueFontSize": "70%",
@@ -272,7 +272,7 @@
             }
           ],
           "thresholds": "70,90",
-          "title": "Heap used",
+          "title": "힙 사용량",
           "type": "singlestat",
           "valueFontSize": "80%",
           "valueMaps": [
@@ -357,7 +357,7 @@
             }
           ],
           "thresholds": "70,90",
-          "title": "Non-Heap used",
+          "title": "논힙 사용량",
           "type": "singlestat",
           "valueFontSize": "80%",
           "valueMaps": [
@@ -379,7 +379,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "Quick Facts",
+      "title": "요약",
       "titleSize": "h6"
     },
     {
@@ -428,7 +428,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Rate",
+          "title": "요청 처리량",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -507,7 +507,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Errors",
+          "title": "오류",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -592,7 +592,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Duration",
+          "title": "응답 시간",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -710,7 +710,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Utilisation",
+          "title": "사용률",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -748,7 +748,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "I/O Overview",
+      "title": "입출력 개요",
       "titleSize": "h6"
     },
     {
@@ -825,7 +825,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "JVM Heap",
+          "title": "JVM 힙",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -936,7 +936,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "JVM Non-Heap",
+          "title": "JVM 논힙",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1047,7 +1047,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "JVM Total",
+          "title": "JVM 전체",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1163,7 +1163,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "JVM Process Memory",
+          "title": "JVM 프로세스 메모리",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1208,7 +1208,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "JVM Memory",
+      "title": "JVM 메모리",
       "titleSize": "h6"
     },
     {
@@ -1286,7 +1286,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "CPU Usage",
+          "title": "CPU 사용률",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1388,7 +1388,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Load",
+          "title": "시스템 부하",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1509,7 +1509,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Threads",
+          "title": "스레드",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1601,7 +1601,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Thread States",
+          "title": "스레드 상태",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -1677,7 +1677,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "GC Pressure",
+          "title": "GC 부담",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -1786,7 +1786,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Log Events",
+          "title": "로그 이벤트",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1893,7 +1893,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "File Descriptors",
+          "title": "파일 디스크립터",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -1939,7 +1939,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "JVM Misc",
+      "title": "JVM 기타",
       "titleSize": "h6"
     },
     {
@@ -2073,7 +2073,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "JVM Memory Pools (Heap)",
+      "title": "JVM 메모리 풀 (힙)",
       "titleSize": "h6"
     },
     {
@@ -2207,7 +2207,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "JVM Memory Pools (Non-Heap)",
+      "title": "JVM 메모리 풀 (논힙)",
       "titleSize": "h6"
     },
     {
@@ -2257,7 +2257,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Collections",
+          "title": "GC 수행 횟수",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -2343,7 +2343,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Pause Durations",
+          "title": "GC 정지 시간",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -2427,7 +2427,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Allocated/Promoted",
+          "title": "할당 / 승격",
           "tooltip": {
             "shared": true,
             "sort": 0,
@@ -2465,7 +2465,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "Garbage Collection",
+      "title": "가비지 컬렉션",
       "titleSize": "h6"
     },
     {
@@ -2526,7 +2526,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Classes loaded",
+          "title": "로드된 클래스",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -2622,7 +2622,7 @@
           "thresholds": [],
           "timeFrom": null,
           "timeShift": null,
-          "title": "Class delta",
+          "title": "클래스 증감",
           "tooltip": {
             "msResolution": false,
             "shared": true,
@@ -2668,7 +2668,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "Classloading",
+      "title": "클래스 로딩",
       "titleSize": "h6"
     },
     {
@@ -2782,7 +2782,7 @@
       "repeatIteration": null,
       "repeatRowId": null,
       "showTitle": true,
-      "title": "Buffer Pools",
+      "title": "버퍼 풀",
       "titleSize": "h6"
     }
   ],
@@ -2916,7 +2916,7 @@
     ]
   },
   "timezone": "browser",
-  "title": "JVM (Micrometer) — LXP",
+  "title": "JVM 상세 (Micrometer)",
   "version": 33,
   "uid": "lxp-jvm"
 }
