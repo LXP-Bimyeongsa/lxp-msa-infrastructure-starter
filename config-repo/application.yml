@@ -3,6 +3,24 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+  metrics:
+    distribution:
+      # 히스토그램 버킷을 내보낸다 (D-57).
+      #
+      # 없으면 http_server_requests_seconds_count/sum/max만 나오고
+      # _bucket이 없어 histogram_quantile을 쓸 수 없다. 대시보드의
+      # "응답 지연 p95" 패널이 No data로 비어 있었다.
+      #
+      # max는 순간 최대값이라 이상치 하나에 좌우된다. 백분위는
+      # 분포를 봐야 하고, 그러려면 버킷이 필요하다.
+      percentiles-histogram:
+        http.server.requests: true
+      # 관심 구간만 촘촘하게. 기본 버킷은 초 단위까지 넓게 잡혀
+      # 밀리초대 응답에서는 해상도가 떨어진다.
+      minimum-expected-value:
+        http.server.requests: 1ms
+      maximum-expected-value:
+        http.server.requests: 5s
   endpoint:
     health:
       show-details: always

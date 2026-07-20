@@ -1,0 +1,20 @@
+# 대시보드 프로비저닝 (D-57)
+#
+# UI에서 만들면 볼륨을 지우는 순간 사라진다 — 이 프로젝트에서 MySQL init,
+# Keycloak realm, Jenkins 잡으로 이미 세 번 겪은 패턴이다(D-40).
+# JSON 파일로 두고 컨테이너가 읽어가게 한다.
+
+apiVersion: 1
+
+providers:
+  - name: lxp
+    orgId: 1
+    folder: LXP
+    type: file
+    disableDeletion: false
+    # UI에서 고친 것을 파일이 다시 덮어쓴다. 정본은 저장소다.
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false
