@@ -15,7 +15,9 @@ FROM jenkins/jenkins:2.568.1-jdk21
 
 USER root
 
-# docker CLI만 설치한다. buildx는 compose 빌드에 필요하지 않아 뺀다.
+# docker CLI와 compose 플러그인을 설치한다 (D-52).
+# 배포 단계가 compose로 배포 스택을 올리므로 compose가 필요하다.
+# buildx는 쓰지 않아 뺀다.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl gnupg \
     && install -m 0755 -d /etc/apt/keyrings \
@@ -26,7 +28,7 @@ RUN apt-get update \
         https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
         > /etc/apt/sources.list.d/docker.list \
     && apt-get update \
-    && apt-get install -y --no-install-recommends docker-ce-cli \
+    && apt-get install -y --no-install-recommends docker-ce-cli docker-compose-plugin \
     && rm -rf /var/lib/apt/lists/*
 
 # 빌드용 JDK 17 (D-48).

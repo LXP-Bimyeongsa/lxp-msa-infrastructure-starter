@@ -1,0 +1,222 @@
+# 배포 대상 스택 (D-52)
+#
+#   docker compose -f compose.deploy.yaml up -d
+#
+# 파이프라인이 레지스트리에서 이미지를 받아 여기에 올린다. 개발 중인
+# compose.yaml 스택은 건드리지 않는다 — 배포가 개발 스택을 재시작시키면
+# 작업 중에 서비스가 끊긴다.
+#
+# 실제 운영에서 배포 서버가 개발 PC와 분리돼 있는 것과 같은 구조다.
+# 지금은 같은 호스트지만 이름·포트·네트워크 참여만 분리했다.
+#
+# ── 왜 바인드 마운트를 쓰지 않는가 ────────────────────────────────
+# Jenkins의 docker CLI는 호스트 데몬을 쓴다(DooD). compose를 Jenkins
+# 워크스페이스에서 돌리면 상대 경로가 /var/jenkins_home/... 으로 계산돼
+# 호스트에는 없는 경로가 된다. 로그는 사라지고 config-repo는 비어 보인다.
+# 그래서 배포 스택은 호스트 경로에 의존하지 않는다 — 로그는 named volume,
+# 설정은 이미 떠 있는 config-server에서 HTTP로 받아온다.
+#
+# ── 인프라는 공유한다 ────────────────────────────────────────────
+# MySQL·Mongo·RabbitMQ·Keycloak·Consul·config-server는 기존 것을 그대로
+# 쓴다. 배포 검증에 필요한 것은 "레지스트리 이미지로 뜨는가"이지
+# 데이터 계층을 한 벌 더 만드는 것이 아니다.
+#
+# ── Consul 중복 등록에 대하여 ────────────────────────────────────
+# 배포 인스턴스도 같은 이름으로 등록되므로 서비스마다 인스턴스가 2개가
+# 된다. 이는 오류가 아니라 수평 확장과 같은 상태다. D-43의
+# query-passing 덕분에 healthy한 것만 라우팅 대상이 된다.
+
+name: lxp-deploy
+
+services:
+
+  gateway:
+    image: ${REGISTRY_HOST:-localhost:5000}/lxp/gateway:${DEPLOY_TAG:-latest}
+    container_name: lxp-deploy-gateway
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/token
+      KEYCLOAK_GATEWAY_CLIENT_ID: lxp-gateway
+      KEYCLOAK_GATEWAY_CLIENT_SECRET: ${KEYCLOAK_GATEWAY_CLIENT_SECRET:-lxp-gateway-secret}
+      KEYCLOAK_INTROSPECTION_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/token/introspect
+      KEYCLOAK_INTROSPECTION_ENABLED: ${KEYCLOAK_INTROSPECTION_ENABLED:-true}
+      KEYCLOAK_INTROSPECTION_CACHE_TTL: ${KEYCLOAK_INTROSPECTION_CACHE_TTL:-30}
+      # 배포 인스턴스는 개발 스택보다 작게 잡는다. 6개가 더 뜨므로
+      # 기본 힙(호스트 메모리 기준)으로 두면 노트북이 버티지 못한다.
+      JAVA_TOOL_OPTIONS: -Xmx256m
+    ports:
+      - "${DEPLOY_GATEWAY_PORT:-18080}:8080"
+    volumes:
+      - deploy-logs:/logs
+    restart: on-failure:3
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  member-service:
+    image: ${REGISTRY_HOST:-localhost:5000}/lxp/member-service:${DEPLOY_TAG:-latest}
+    container_name: lxp-deploy-member-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      # gRPC 포트가 개발 인스턴스(9092)와 겹치면 안 된다.
+      # Consul 메타데이터로 전파되므로 호출 측은 이 값을 보고 찾아온다.
+      GRPC_SERVER_PORT: 9192
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      KEYCLOAK_ADMIN_URL: http://keycloak:8080
+      KEYCLOAK_ADMIN_CLIENT_ID: ${KEYCLOAK_MEMBER_CLIENT_ID:-member-service}
+      KEYCLOAK_ADMIN_CLIENT_SECRET: ${KEYCLOAK_MEMBER_CLIENT_SECRET:-member-service-secret}
+      MYSQL_HOST: mysql
+      MYSQL_DB_PORT: 3306
+      MYSQL_USER: ${MEMBER_DB_USER:-member}
+      MYSQL_PASSWORD: ${MEMBER_DB_PASSWORD:-member}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-lxp}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lxp}
+      JAVA_TOOL_OPTIONS: -Xmx256m
+    ports:
+      - "${DEPLOY_MEMBER_PORT:-18082}:8082"
+      - "${DEPLOY_MEMBER_GRPC_PORT:-9192}:9192"
+    volumes:
+      - deploy-logs:/logs
+    restart: on-failure:3
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8082/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  course-service:
+    image: ${REGISTRY_HOST:-localhost:5000}/lxp/course-service:${DEPLOY_TAG:-latest}
+    container_name: lxp-deploy-course-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      MINIO_INTERNAL_ENDPOINT: http://minio:9000
+      MINIO_PUBLIC_ENDPOINT: http://localhost:${MINIO_PORT:-9000}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MONGO_HOST: mongo
+      MONGO_DB_PORT: 27017
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-lxp}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lxp}
+      JAVA_TOOL_OPTIONS: -Xmx256m
+    ports:
+      - "${DEPLOY_COURSE_PORT:-18083}:8083"
+    volumes:
+      - deploy-logs:/logs
+    restart: on-failure:3
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8083/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  subscription-service:
+    image: ${REGISTRY_HOST:-localhost:5000}/lxp/subscription-service:${DEPLOY_TAG:-latest}
+    container_name: lxp-deploy-subscription-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      KEYCLOAK_TOKEN_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/token
+      KEYCLOAK_SUBSCRIPTION_CLIENT_ID: ${KEYCLOAK_SUBSCRIPTION_CLIENT_ID:-subscription-service}
+      KEYCLOAK_SUBSCRIPTION_CLIENT_SECRET: ${KEYCLOAK_SUBSCRIPTION_CLIENT_SECRET:-subscription-service-secret}
+      MYSQL_HOST: mysql
+      MYSQL_DB_PORT: 3306
+      MYSQL_USER: ${SUBSCRIPTION_DB_USER:-subscription}
+      MYSQL_PASSWORD: ${SUBSCRIPTION_DB_PASSWORD:-subscription}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-lxp}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lxp}
+      JAVA_TOOL_OPTIONS: -Xmx256m
+    ports:
+      - "${DEPLOY_SUBSCRIPTION_PORT:-18084}:8084"
+    volumes:
+      - deploy-logs:/logs
+    restart: on-failure:3
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8084/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+  payment-service:
+    image: ${REGISTRY_HOST:-localhost:5000}/lxp/payment-service:${DEPLOY_TAG:-latest}
+    container_name: lxp-deploy-payment-service
+    environment:
+      CONSUL_HOST: consul-1
+      CONSUL_PORT: 8500
+      LOG_DIR: /logs
+      CONFIG_SERVER_URL: http://config-server:8888
+      ZIPKIN_ENDPOINT: http://zipkin:9411/api/v2/spans
+      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
+      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
+      PG_BASE_URL: http://mock-pg:8080
+      # 배포 인스턴스에서 스케줄러를 켜면 개발 인스턴스와 같은 스케줄을
+      # 동시에 집는다. D-41에서 그 경로를 안전하게 만들었지만, 배포
+      # 검증에 정기결제까지 두 번 돌 이유가 없으므로 끈다.
+      BILLING_SCHEDULER_ENABLED: "false"
+      MYSQL_HOST: mysql
+      MYSQL_DB_PORT: 3306
+      MYSQL_USER: ${PAYMENT_DB_USER:-payment}
+      MYSQL_PASSWORD: ${PAYMENT_DB_PASSWORD:-payment}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_AMQP_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER:-lxp}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-lxp}
+      JAVA_TOOL_OPTIONS: -Xmx256m
+    ports:
+      - "${DEPLOY_PAYMENT_PORT:-18085}:8085"
+    volumes:
+      - deploy-logs:/logs
+    restart: on-failure:3
+    networks: [lxp-net]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8085/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+      start_period: 60s
+
+networks:
+  # 기존 스택이 만든 네트워크에 참여한다. 새로 만들지 않는다.
+  lxp-net:
+    name: lxp-net
+    external: true
+
+volumes:
+  deploy-logs:

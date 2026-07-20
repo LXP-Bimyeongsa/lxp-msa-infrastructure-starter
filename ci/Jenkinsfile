@@ -212,6 +212,72 @@ pipeline {
                 }
             }
         }
+
+        stage('배포') {
+            when {
+                allOf {
+                    expression { env.CHANGED_SERVICES?.trim() }
+                    expression { env.BUILT_BRANCH == 'main' }
+                }
+            }
+            steps {
+                withCredentials([usernamePassword(
+                        credentialsId: 'registry-credentials',
+                        usernameVariable: 'REG_USER',
+                        passwordVariable: 'REG_PASS')]) {
+                    script {
+                        // 레지스트리에서 "받아서" 올린다 (D-52).
+                        //
+                        // 방금 빌드한 로컬 이미지를 그대로 쓰지 않는 이유 —
+                        // 그러면 레지스트리를 거치는지 확인할 수 없다. 실제
+                        // 배포 서버는 빌드 머신이 아니므로 pull 말고는 방법이 없다.
+                        //
+                        // 배포 스택은 compose.yaml과 분리돼 있다. 개발 중인
+                        // 스택을 재시작시키면 작업 중에 서비스가 끊긴다.
+                        sh '''
+                            echo "$REG_PASS" | docker login "$REGISTRY_HOST" -u "$REG_USER" --password-stdin
+                        '''
+                        try {
+                            // 커밋 SHA로 고정해서 올린다. latest로 올리면
+                            // 어느 커밋이 떠 있는지 나중에 알 수 없다.
+                            sh """
+                                DEPLOY_TAG=${env.GIT_SHORT} \
+                                docker compose -f compose.deploy.yaml pull
+                                DEPLOY_TAG=${env.GIT_SHORT} \
+                                docker compose -f compose.deploy.yaml up -d
+                            """
+                        } finally {
+                            sh 'docker logout "$REGISTRY_HOST" || true'
+                        }
+
+                        // 뜬 것으로 끝내지 않고 healthy가 될 때까지 본다.
+                        // "컨테이너가 실행 중"과 "서비스가 응답한다"는 다르다 —
+                        // 이 프로젝트에서 여러 번 확인한 구분이다.
+                        sh '''
+                            echo "헬스체크 대기..."
+                            for i in $(seq 1 40); do
+                                UNHEALTHY=$(docker ps --filter "name=lxp-deploy-" \
+                                    --filter "health=unhealthy" --format '{{.Names}}' | wc -l)
+                                STARTING=$(docker ps --filter "name=lxp-deploy-" \
+                                    --filter "health=starting" --format '{{.Names}}' | wc -l)
+                                HEALTHY=$(docker ps --filter "name=lxp-deploy-" \
+                                    --filter "health=healthy" --format '{{.Names}}' | wc -l)
+                                echo "  [$i] healthy=$HEALTHY starting=$STARTING unhealthy=$UNHEALTHY"
+                                if [ "$STARTING" -eq 0 ] && [ "$UNHEALTHY" -eq 0 ] && [ "$HEALTHY" -gt 0 ]; then
+                                    echo "배포 완료: $HEALTHY개 healthy"
+                                    exit 0
+                                fi
+                                sleep 15
+                            done
+                            echo "배포한 컨테이너가 healthy가 되지 않았다"
+                            docker ps --filter "name=lxp-deploy-" \
+                                --format '{{.Names}}\t{{.Status}}'
+                            exit 1
+                        '''
+                    }
+                }
+            }
+        }
     }
 
     post {
