@@ -1,20 +1,52 @@
-# 대시보드 프로비저닝 (D-57)
+# 대시보드 프로비저닝 (D-57, 폴더 분리는 D-63)
 #
 # UI에서 만들면 볼륨을 지우는 순간 사라진다 — 이 프로젝트에서 MySQL init,
 # Keycloak realm, Jenkins 잡으로 이미 세 번 겪은 패턴이다(D-40).
 # JSON 파일로 두고 컨테이너가 읽어가게 한다.
+#
+# 폴더를 셋으로 나눈다. 장애를 볼 때 묻는 질문이 다르기 때문이다.
+#   서비스     우리 코드가 잘 도는가
+#   인프라     그것이 딛고 선 것들이 잘 도는가
+#   부하·품질  부하를 걸었을 때 어떻게 되는가
+#
+# foldersFromFilesStructure를 쓰지 않는 이유 — 그 방식은 폴더 이름이
+# 디렉터리 이름이 된다. 한글 폴더명을 쓰려면 디렉터리도 한글이어야 하고,
+# 윈도우·도커 볼륨 경로에서 인코딩 문제를 부를 수 있다.
+# provider를 셋으로 두면 디렉터리는 ASCII, 표시 이름은 한글로 갈라진다.
 
 apiVersion: 1
 
 providers:
-  - name: lxp
+  - name: lxp-services
     orgId: 1
-    folder: LXP
+    folder: 서비스
     type: file
     disableDeletion: false
     # UI에서 고친 것을 파일이 다시 덮어쓴다. 정본은 저장소다.
     allowUiUpdates: false
     updateIntervalSeconds: 30
     options:
-      path: /var/lib/grafana/dashboards
+      path: /var/lib/grafana/dashboards/services
+      foldersFromFilesStructure: false
+
+  - name: lxp-infra
+    orgId: 1
+    folder: 인프라
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/infra
+      foldersFromFilesStructure: false
+
+  - name: lxp-quality
+    orgId: 1
+    folder: 부하·품질
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards/quality
       foldersFromFilesStructure: false
