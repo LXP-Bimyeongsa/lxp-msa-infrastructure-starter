@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LXP 데모 콘솔</title>
+<style>
+  /* 발표 촬영용 화면이다. 프로젝션에서 뒷자리가 읽을 수 있게 본문을 키우고,
+     색은 상태(대기/성공/실패)를 구분하는 데만 쓴다. */
+  :root {
+    --bg:#0f1216; --panel:#171b21; --panel2:#1e232b; --line:#2a313b;
+    --text:#dfe4ea; --dim:#8b95a3; --accent:#4a9eff;
+    --ok:#3fb950; --warn:#d29922; --err:#f85149;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.6 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+
+  header{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+         padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{margin:0;font-size:16px}
+  header .sub{color:var(--dim);font-size:13px}
+  header .spacer{flex:1}
+  .who{font-family:var(--mono);font-size:13px;color:var(--dim)}
+  .who b{color:var(--accent);font-weight:600}
+
+  main{display:grid;grid-template-columns:340px 1fr 1fr;gap:0;height:calc(100vh - 49px)}
+  @media (max-width:1200px){main{grid-template-columns:1fr;height:auto}}
+
+  .col{overflow-y:auto;min-width:0}
+  .col.steps{border-right:1px solid var(--line);padding:14px}
+  .col.stage{border-right:1px solid var(--line);padding:14px;display:flex;flex-direction:column;gap:12px}
+  .col.logs{display:flex;flex-direction:column}
+
+  .step{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+        padding:11px 13px;margin-bottom:9px}
+  .step h3{margin:0 0 3px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .step .n{display:inline-flex;width:20px;height:20px;border-radius:50%;flex:none;
+           background:var(--panel2);color:var(--dim);font:600 11px/20px var(--mono);justify-content:center}
+  .step p{margin:0 0 9px;font-size:12.5px;color:var(--dim)}
+  .step.done .n{background:var(--ok);color:#06210c}
+
+  button{font:500 14px/1 inherit;padding:9px 14px;border-radius:6px;cursor:pointer;
+         border:1px solid var(--line);background:var(--panel2);color:var(--text)}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:var(--accent);border-color:var(--accent);color:#06192e;font-weight:600}
+  button.danger{border-color:#5a2a2a;color:#ff9d97}
+
+  /* ── 무대: 강의 카드 + 플레이어 ───────────────────────── */
+  .course{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+  .course .meta{padding:14px 16px}
+  .course h2{margin:0 0 6px;font-size:19px;letter-spacing:-.01em}
+  .course .desc{margin:0;color:var(--dim);font-size:13.5px}
+  .course .tags{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+  .tag{font:600 11px/1 var(--mono);padding:5px 9px;border-radius:20px;
+       background:var(--panel2);color:var(--dim);border:1px solid var(--line)}
+  .tag.ok{color:var(--ok);border-color:#1d4527}
+  .tag.warn{color:var(--warn);border-color:#4a3a12}
+
+  .player{position:relative;aspect-ratio:16/9;background:#000;
+          display:flex;align-items:center;justify-content:center}
+  .player video{width:100%;height:100%;display:block}
+  .locked{text-align:center;padding:24px}
+  .locked .ico{font-size:38px;line-height:1}
+  .locked .t{margin-top:10px;font-size:16px;font-weight:600}
+  .locked .s{margin-top:5px;font-size:13px;color:var(--dim)}
+  .locked .code{margin-top:12px;display:inline-block;font:600 12px/1 var(--mono);
+                padding:6px 10px;border-radius:5px;background:#2a1416;color:var(--err)}
+
+  .flow{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:12px 14px}
+  .flow h4{margin:0 0 10px;font-size:13px;color:var(--dim);font-weight:600}
+  .hops{display:flex;flex-direction:column;gap:7px}
+  .hop{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--dim)}
+  .hop .dot{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+  .hop.on{color:var(--text)}
+  .hop.on .dot{background:var(--warn);box-shadow:0 0 0 4px rgba(210,153,34,.16)}
+  .hop.done{color:var(--text)}
+  .hop.done .dot{background:var(--ok)}
+  .hop code{font-family:var(--mono);font-size:11.5px;color:var(--dim)}
+
+  .state{display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:8px;
+         padding:11px 14px;border-bottom:1px solid var(--line);background:var(--panel2)}
+  .state div{font-size:11.5px;color:var(--dim)}
+  .state div b{display:block;font:600 15px/1.5 var(--mono);color:var(--text)}
+  .state div b.ok{color:var(--ok)} .state div b.warn{color:var(--warn)} .state div b.err{color:var(--err)}
+
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;padding:10px 14px;align-items:center;
+           border-bottom:1px solid var(--line);background:var(--panel)}
+  .toolbar .spacer{flex:1}
+  .toolbar a{color:var(--dim);font-size:12.5px;text-decoration:none;border-bottom:1px dotted var(--line)}
+  .toolbar a:hover{color:var(--accent)}
+
+  #log{flex:1;overflow-y:auto;padding:11px 14px;font-family:var(--mono);font-size:12.5px}
+  .entry{border-left:3px solid var(--line);padding:7px 0 7px 11px;margin-bottom:9px}
+  .entry.ok{border-left-color:var(--ok)} .entry.err{border-left-color:var(--err)}
+  .entry.info{border-left-color:var(--accent)} .entry.wait{border-left-color:var(--warn)}
+  .entry .l1{display:flex;gap:9px;align-items:baseline;flex-wrap:wrap}
+  .entry .t{color:var(--dim)} .entry .m{font-weight:600}
+  .entry .st{margin-left:auto} .entry .st.ok{color:var(--ok)} .entry .st.err{color:var(--err)}
+  .entry .ms{color:var(--dim)}
+  .entry pre{margin:5px 0 0;white-space:pre-wrap;word-break:break-all;color:var(--dim);
+             max-height:150px;overflow-y:auto}
+  .entry .tr{margin-top:4px;font-size:11.5px}
+  .entry .tr a{color:var(--accent);text-decoration:none}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>LXP 데모 콘솔</h1>
+  <span class="sub">클릭 한 번이 사가를 돌린다 — 각 응답의 traceId로 Zipkin에서 경로를 따라간다</span>
+  <span class="spacer"></span>
+  <span class="who" id="who">로그인 안 됨</span>
+</header>
+
+<main>
+  <!-- 왼쪽: 시나리오 -->
+  <section class="col steps" id="steps"></section>
+
+  <!-- 가운데: 무대 -->
+  <section class="col stage">
+    <div class="course">
+      <div class="player" id="player">
+        <div class="locked">
+          <div class="ico">🔒</div>
+          <div class="t">구독이 필요한 강의입니다</div>
+          <div class="s">구독하면 바로 시청할 수 있습니다</div>
+          <div class="code" id="lockcode">아직 요청 전</div>
+        </div>
+      </div>
+      <div class="meta">
+        <h2 id="c-title">강의를 불러오는 중…</h2>
+        <p class="desc" id="c-desc"></p>
+        <div class="tags">
+          <span class="tag" id="c-id">courseId —</span>
+          <span class="tag" id="c-video">영상 —</span>
+          <span class="tag" id="c-plan">PREMIUM 49,000원</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flow">
+      <h4>구독 신청 한 번에 일어나는 일</h4>
+      <div class="hops" id="hops">
+        <div class="hop" data-k="sub"><span class="dot"></span>subscription — 구독 생성 <code>PENDING</code></div>
+        <div class="hop" data-k="mq"><span class="dot"></span>Outbox → RabbitMQ <code>SubscriptionCreated</code></div>
+        <div class="hop" data-k="pay"><span class="dot"></span>payment — PG 승인 <code>PaymentResult</code></div>
+        <div class="hop" data-k="act"><span class="dot"></span>subscription — 상태 전환 <code>ACTIVE</code></div>
+        <div class="hop" data-k="ent"><span class="dot"></span>course — 재생 권한 복제 <code>entitlement</code></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 오른쪽: 관측 -->
+  <section class="col logs">
+    <div class="state">
+      <div>회원<b id="s-member">—</b></div>
+      <div>구독<b id="s-sub">—</b></div>
+      <div>상태<b id="s-status">—</b></div>
+      <div>결제<b id="s-pay">—</b></div>
+      <div>재생<b id="s-play">—</b></div>
+    </div>
+    <div class="toolbar">
+      <button id="clear">로그 지우기</button>
+      <span class="spacer"></span>
+      <a href="http://localhost:3000" target="_blank">Grafana</a>
+      <a href="http://localhost:9411" target="_blank">Zipkin</a>
+      <a href="http://localhost:15672" target="_blank">RabbitMQ</a>
+      <a href="http://localhost:9001" target="_blank">MinIO</a>
+    </div>
+    <div id="log"></div>
+  </section>
+</main>
+
+<script>
+// ─── 설정 ──────────────────────────────────────────────────
+const GATEWAY  = 'http://localhost:8080';
+const KEYCLOAK = 'http://localhost:8180';
+const ZIPKIN   = 'http://localhost:9411';
+const REALM = 'lxp', CLIENT = 'lxp-web';
+
+// 영상이 이미 올라가 있는 강의. MinIO에 실제 객체가 있어야 재생이 열린다.
+// ?course=... 로 덮어쓸 수 있다.
+// 15초짜리 짧은 클립을 쓴다. 원본(3분 50초, 74MB)은 서명 URL로 받는 동안
+// 스피너만 몇 초 돌아서, 정작 보여주려던 "잠금이 풀리고 영상이 뜬다"가
+// 화면에 안 잡혔다. 여기서 필요한 것은 재생이 열린다는 사실이지
+// 강의 내용을 다 트는 것이 아니다.
+const COURSE_ID = new URLSearchParams(location.search).get('course')
+  || '6a5eed08ad8cd65e2fc3f99b';
+
+// 시청자 계정은 실행할 때마다 새로 만든다.
+//
+// 고정 계정을 쓰면 한 번 구독한 뒤로는 계속 200이라 403 장면이 사라진다 —
+// 실제로 그렇게 만들었다가 2번에서 200이 나왔다. 해지 API는 subscriptionId를
+// 알아야 하는데 "내 구독 목록" 엔드포인트가 없어서 화면이 그것을 찾을 수 없다.
+// 매번 새 계정이면 초기화 절차 없이 항상 같은 자리에서 시작한다.
+//
+// 소유자(coach@)를 쓰면 안 된다 — D-36에 따라 구독 없이도 재생된다.
+const VIEWER_PW = 'Passw0rd!23';
+const viewerEmail = () => `viewer-${Date.now().toString(36)}@lxp.demo`;
+
+const S = { token:null, memberId:null, subscriptionId:null };
+
+// ─── 로그 ──────────────────────────────────────────────────
+const logEl = document.getElementById('log');
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+function log(kind, msg, detail, traceId, status, ms){
+  const e = document.createElement('div'); e.className = 'entry ' + kind;
+  const t = new Date().toLocaleTimeString('ko-KR',{hour12:false});
+  let h = `<div class="l1"><span class="t">${t}</span><span class="m">${esc(msg)}</span>`;
+  if (status !== undefined) h += `<span class="st ${status<400?'ok':'err'}">${status}</span>`;
+  if (ms !== undefined) h += `<span class="ms">${ms}ms</span>`;
+  h += `</div>`;
+  if (detail) h += `<pre>${esc(detail)}</pre>`;
+  if (traceId) h += `<div class="tr">traceId <a href="${ZIPKIN}/zipkin/traces/${traceId}" target="_blank">${traceId}</a></div>`;
+  e.innerHTML = h; logEl.appendChild(e); logEl.scrollTop = logEl.scrollHeight;
+}
+document.getElementById('clear').onclick = () => logEl.innerHTML = '';
+
+// ─── 호출 ──────────────────────────────────────────────────
+async function call(method, path, body, opt={}){
+  const headers = {'Content-Type':'application/json'};
+  if (S.token && !opt.anonymous) headers.Authorization = 'Bearer ' + S.token;
+  const t0 = performance.now();
+  let res;
+  try {
+    res = await fetch(GATEWAY + path, {method, headers, body: body===undefined?undefined:JSON.stringify(body)});
+  } catch (err) {
+    log('err', `${method} ${path}`,
+      `브라우저에서 막혔습니다: ${err.message}\n(gateway 기동 여부와 CORS 허용 출처를 확인)`);
+    throw err;
+  }
+  const ms = Math.round(performance.now()-t0);
+  const traceId = res.headers.get('X-Trace-Id');
+  const text = await res.text();
+  let pretty = text;
+  try { pretty = JSON.stringify(JSON.parse(text), null, 2); } catch(_) {}
+  if (!opt.quiet) log(res.ok?'ok':'err', `${method} ${path}`, pretty||'(본문 없음)', traceId, res.status, ms);
+  if (!res.ok && !opt.allowFail) throw new Error(String(res.status));
+  return {ok:res.ok, status:res.status, body: text ? tryJson(text) : null, traceId};
+}
+const tryJson = t => { try { return JSON.parse(t); } catch { return t; } };
+const setS = (k,v,c) => { const e=document.getElementById('s-'+k); e.textContent=v; e.className=c||''; };
+const hop = (k,cls) => { const e=document.querySelector(`.hop[data-k="${k}"]`); if(e) e.className='hop '+cls; };
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+
+// ─── 강의 정보 ─────────────────────────────────────────────
+async function loadCourse(){
+  try {
+    const r = await call('GET', `/api/courses/${COURSE_ID}`, undefined, {quiet:true, allowFail:true});
+    if (!r.ok) throw new Error(r.status);
+    const c = r.body;
+    document.getElementById('c-title').textContent = c.title;
+    document.getElementById('c-desc').textContent = c.description || '';
+    document.getElementById('c-id').textContent = 'courseId ' + c.courseId.slice(0,10) + '…';
+    const v = document.getElementById('c-video');
+    v.textContent = c.videoUploaded ? '영상 업로드됨' : '영상 없음';
+    v.className = 'tag ' + (c.videoUploaded ? 'ok' : 'warn');
+  } catch(e) {
+    // 로그인 전에는 토큰이 없어 401이 정상이다. 실패를 오류처럼 보여주면
+    // 발표 중에 "뭔가 깨졌나" 싶게 만든다.
+    const first = !S.token;
+    document.getElementById('c-title').textContent =
+      first ? '로그인하면 강의를 불러옵니다' : '강의를 불러오지 못했습니다';
+    document.getElementById('c-desc').textContent =
+      first ? '' : 'courseId가 맞는지, 백엔드가 떠 있는지 확인하세요. ?course=<id> 로 지정할 수 있습니다.';
+  }
+}
+
+function showLocked(codeText){
+  document.getElementById('player').innerHTML =
+    `<div class="locked"><div class="ico">🔒</div>
+     <div class="t">구독이 필요한 강의입니다</div>
+     <div class="s">구독하면 바로 시청할 수 있습니다</div>
+     <div class="code">${esc(codeText)}</div></div>`;
+}
+function showVideo(url){
+  // 서명 URL은 1시간짜리다. 재생은 MinIO에서 직접 받아온다 —
+  // 게이트웨이를 거치지 않으므로 영상 트래픽이 서비스에 부담을 주지 않는다(D-07).
+  document.getElementById('player').innerHTML =
+    `<video controls autoplay playsinline src="${url}"></video>`;
+}
+
+// ─── 시나리오 ──────────────────────────────────────────────
+const steps = [
+  {
+    title:'가입 + 로그인', desc:'매번 새 시청자를 만든다. 그래야 2번의 403이 항상 재현된다.',
+    label:'시작하기', async run(){
+      const email = viewerEmail();
+      const reg = await call('POST','/api/members',
+        {email, password:VIEWER_PW, name:'데모 시청자'}, {anonymous:true});
+      S.memberId = reg.body.memberId;
+      setS('member', S.memberId);
+
+      const t0 = performance.now();
+      const res = await fetch(`${KEYCLOAK}/realms/${REALM}/protocol/openid-connect/token`, {
+        method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+        body:new URLSearchParams({grant_type:'password', client_id:CLIENT,
+          username:email, password:VIEWER_PW}),
+      });
+      const ms = Math.round(performance.now()-t0);
+      const j = await res.json();
+      if (!res.ok){ log('err','Keycloak 토큰 발급', JSON.stringify(j,null,2), null, res.status, ms); throw new Error('로그인 실패'); }
+      S.token = j.access_token;
+      log('ok','Keycloak 토큰 발급', `만료 ${j.expires_in}초 후 (D-32에서 3600 → 300으로 줄였다)`, null, res.status, ms);
+      document.getElementById('who').innerHTML = `<b>${esc(email)}</b>`;
+      // 강의 조회도 토큰이 있어야 한다. 페이지를 처음 열 때는 401이라
+      // 제목이 비어 있으므로, 로그인 직후 다시 불러온다.
+      await loadCourse();
+    },
+  },
+  {
+    title:'구독 없이 재생 시도', desc:'course-service가 복제해 둔 읽기 모델로 판단한다. 403이 정상이다 (D-36).',
+    label:'재생 시도', async run(){
+      const r = await call('GET', `/api/courses/${COURSE_ID}/video/playback-url`, undefined, {allowFail:true});
+      if (r.status === 403) {
+        showLocked('HTTP 403 — 구독 없음');
+        setS('play','403 차단','warn');
+        log('info','기대한 결과',
+          '403 = 강의도 회원도 정상이고 구독만 없다.\n404로 감추면 "구독하면 볼 수 있다"를 알 수 없다.');
+      } else if (r.ok) {
+        // 결과를 화면에 그대로 반영한다. 200인데 잠긴 화면을 보여주면
+        // 발표에서 사실과 다른 것을 설명하게 된다.
+        showVideo(r.body.url);
+        setS('play','허용','ok');
+        log('info','예상과 다름',
+          '이 계정은 이미 볼 수 있는 상태다. 구독이 남아 있거나 강의 소유자다(D-36).\n403 장면을 보려면 1번을 다시 눌러 새 계정으로 시작한다.');
+      } else {
+        showLocked(`HTTP ${r.status}`);
+        setS('play', String(r.status), 'err');
+      }
+    },
+  },
+  {
+    title:'구독 신청 — 사가 시작', desc:'여기서 이벤트 연쇄가 시작된다. 응답은 즉시 오지만 결제는 아직이다.',
+    label:'PREMIUM 구독', primary:true, async run(){
+      ['sub','mq','pay','act','ent'].forEach(k=>hop(k,''));
+      hop('sub','on');
+      const r = await call('POST','/api/subscriptions',{plan:'PREMIUM'});
+      S.subscriptionId = r.body.subscriptionId;
+      setS('sub', S.subscriptionId); setS('status', r.body.status, 'warn');
+      hop('sub','done'); hop('mq','on');
+      log('info','사가 시작됨',
+        'PENDING으로 생성됐다. 결제는 메시지로 넘어갔다.\nRabbitMQ 대시보드에 지금 메시지가 지나간다.');
+    },
+  },
+  {
+    title:'상태가 바뀌는 것 지켜보기', desc:'동기 응답이 아니라 이벤트로 바뀐다. 이 대기 구간이 코레오그래피 사가다.',
+    label:'폴링 시작', async run(){
+      if (!S.subscriptionId) throw new Error('먼저 구독하세요');
+      log('wait','폴링 시작','0.7초 간격, 최대 20회');
+      for (let i=1;i<=20;i++){
+        const r = await call('GET', `/api/subscriptions/${S.subscriptionId}`, undefined, {allowFail:true, quiet:i>1});
+        const st = r.body?.status;
+        setS('status', st ?? '—', st==='ACTIVE'?'ok':'warn');
+        if (st==='ACTIVE'){
+          hop('mq','done'); hop('pay','done'); hop('act','done'); hop('ent','on');
+          log('ok', `ACTIVE 전환 (${i}회째)`, '결제 승인 → PaymentResult 소비 → 상태 변경까지 끝났다', r.traceId, r.status);
+          return;
+        }
+        if (st==='CANCELLED'){ log('err',`CANCELLED (${i}회째)`,'결제가 거절돼 보상 경로가 돌았다 (D-16)'); return; }
+        await sleep(700);
+      }
+      log('err','시간 초과','ACTIVE가 되지 않았다. RabbitMQ 대시보드에서 DLQ 적체를 확인한다.');
+    },
+  },
+  {
+    title:'결제 내역', desc:'승인번호가 남아야 나중에 환불할 수 있다 (D-39).',
+    label:'결제 확인', async run(){
+      const r = await call('GET', `/api/payments/subscriptions/${S.subscriptionId}`, undefined, {allowFail:true});
+      const p = Array.isArray(r.body) ? r.body[0] : r.body;
+      setS('pay', p?.status ?? String(r.status), p?.status==='APPROVED'?'ok':'');
+    },
+  },
+  {
+    title:'다시 재생 — 403이 200으로', desc:'같은 요청이다. 동기 호출 없이 이벤트만으로 권한이 넘어왔다.',
+    label:'재생하기', primary:true, async run(){
+      const r = await call('GET', `/api/courses/${COURSE_ID}/video/playback-url`, undefined, {allowFail:true});
+      if (r.ok){
+        hop('ent','done');
+        showVideo(r.body.url);
+        setS('play','허용','ok');
+        log('ok','403 → 200',
+          `서명 URL 발급 (만료 ${r.body.expiresInSeconds}초).\n영상은 MinIO에서 직접 받는다 — 게이트웨이를 거치지 않는다 (D-07).`);
+      } else {
+        showLocked(`HTTP ${r.status}`);
+        setS('play', String(r.status), 'warn');
+        log('info','아직 403','권한 복제가 도착하지 않았을 수 있다. 잠시 후 다시 누른다.');
+      }
+    },
+  },
+  {
+    title:'구독 해지', desc:'예약된 다음 결제도 함께 취소된다 (D-27).',
+    label:'해지', danger:true, async run(){
+      await call('DELETE', `/api/subscriptions/${S.subscriptionId}`, undefined, {allowFail:true});
+      setS('status','CANCELLED','warn');
+    },
+  },
+];
+
+const box = document.getElementById('steps');
+steps.forEach((s,i)=>{
+  const el = document.createElement('div'); el.className='step';
+  el.innerHTML = `<h3><span class="n">${i+1}</span>${esc(s.title)}</h3><p>${esc(s.desc)}</p>`;
+  const b = document.createElement('button');
+  b.textContent = s.label;
+  if (s.primary) b.className='primary';
+  if (s.danger) b.className='danger';
+  b.onclick = async () => {
+    b.disabled = true; const t = b.textContent; b.textContent='…';
+    try { await s.run(); el.classList.add('done'); }
+    catch(e){ log('err', s.title+' 실패', e.message); }
+    finally { b.disabled=false; b.textContent=t; }
+  };
+  el.appendChild(b); box.appendChild(el);
+});
+
+loadCourse();
+log('info','준비됨','왼쪽 위에서부터 순서대로 누르면 됩니다.\n2번에서 잠기고, 6번에서 열립니다.');
+</script>
+</body>
+</html>
