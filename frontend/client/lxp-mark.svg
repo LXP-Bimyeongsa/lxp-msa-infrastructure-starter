@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  LXP 디자인 마크 (Apple 앱아이콘 스타일)
+  - Action Blue(#0066cc) 라운드 스퀘어
+  - 흰색 졸업모(mortarboard) 심볼 = 학습/교육 플랫폼
+  - 단색 대응: 파란 rect 를 currentColor 로 바꾸면 모노크롬으로도 쓸 수 있다.
+-->
+<svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="LXP">
+  <rect width="80" height="80" rx="18" fill="#0066cc"/>
+  <!-- 졸업모 판(mortarboard) -->
+  <path d="M40 22 L67 33 L40 44 L13 33 Z" fill="#ffffff"/>
+  <!-- 모자 아래 캡 -->
+  <path d="M29 39.5 L40 44 L51 39.5 V47.5 C51 51.6 46.1 54.2 40 54.2 C33.9 54.2 29 51.6 29 47.5 Z" fill="#ffffff"/>
+  <!-- 술(tassel) -->
+  <path d="M63 34.5 V46" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+  <circle cx="63" cy="48.5" r="2.8" fill="#ffffff"/>
+</svg>
