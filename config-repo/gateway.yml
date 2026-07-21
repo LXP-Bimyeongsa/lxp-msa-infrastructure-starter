@@ -7,6 +7,29 @@ spring:
     gateway:
       server:
         webflux:
+          # 데모 콘솔이 브라우저에서 API를 부를 수 있게 한다 (D-65).
+          # 없으면 preflight(OPTIONS)에서 전부 막혀 화면이 아무것도 못 한다.
+          #
+          # allowedOrigins를 "*"로 두지 않는 이유 — 지금은 Bearer 토큰만 쓰므로
+          # 당장은 문제가 없지만, 나중에 쿠키를 쓰는 순간 "*"와 credentials는
+          # 함께 쓸 수 없어 조용히 깨진다. 처음부터 출처를 적어둔다.
+          #
+          # OPTIONS에 Authorization 헤더가 붙지 않는다는 점도 중요하다.
+          # JwtAuthenticationFilter가 preflight를 401로 막으면 CORS 설정이
+          # 있어도 소용없으므로, 그 필터는 OPTIONS를 통과시킨다.
+          globalcors:
+            cors-configurations:
+              '[/**]':
+                allowedOrigins:
+                  # 데모 콘솔(사가 스텝 실행기) — D-65
+                  - ${DEMO_CONSOLE_ORIGIN:http://localhost:8091}
+                  # LXP 웹 클라이언트(아키텍처의 client 노드) — gateway를 통해 백엔드에 붙는다.
+                  - ${LXP_CLIENT_ORIGIN:http://localhost:8092}
+                allowedMethods: [GET, POST, PUT, DELETE, OPTIONS]
+                allowedHeaders: ["*"]
+                exposedHeaders: [X-Trace-Id]
+                allowCredentials: false
+                maxAge: 3600
           routes:
             # 인증은 member-service가 담당한다(D-04). Gateway는 JWT 검증만.
             - id: member-service

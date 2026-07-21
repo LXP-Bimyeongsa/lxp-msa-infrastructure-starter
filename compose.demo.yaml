@@ -1,0 +1,43 @@
+# 데모 콘솔 (D-65) + LXP 웹 클라이언트
+#
+#   docker compose -f compose.demo.yaml up -d
+#   → http://localhost:8091   데모 콘솔 (사가를 한 스텝씩 돌리는 시연용)
+#   → http://localhost:8092   LXP 웹 클라이언트 (실제 사용자가 보는 화면)
+#
+# 별도 파일로 두는 이유 — 발표·시연할 때만 필요하다. compose.yaml에 넣으면
+# 평소 개발에서도 계속 떠 있게 된다(D-14의 프로파일 분리, D-56의 k6와 같은 판단).
+#
+# 정적 파일 한 장이라 빌드 도구가 없다. 프레임워크를 쓰면 node_modules와
+# 빌드 단계가 붙는데, 이 화면의 목적은 "클릭할 것"을 만드는 것이지
+# 프론트엔드를 보여주는 것이 아니다.
+
+services:
+
+  demo-console:
+    image: nginx:1.27-alpine
+    container_name: lxp-demo-console
+    volumes:
+      - ./infrastructure/demo-console:/usr/share/nginx/html:ro
+    ports:
+      # gateway의 CORS 허용 출처와 반드시 같아야 한다.
+      # 다르면 preflight에서 막혀 화면이 아무것도 못 한다.
+      - "8091:80"
+    networks: [lxp-net]
+
+  # LXP 웹 클라이언트 — 아키텍처의 client 노드.
+  # apiBase(=gateway :8080)·Keycloak(:8180) 주소가 번들 안에 기본값으로 박혀 있어,
+  # 이 origin(:8092)만 gateway CORS에 등록되면 바로 백엔드에 붙는다.
+  lxp-client:
+    image: nginx:1.27-alpine
+    container_name: lxp-client
+    volumes:
+      - ./infrastructure/lxp-client:/usr/share/nginx/html:ro
+    ports:
+      # config-repo/gateway.yml 의 LXP_CLIENT_ORIGIN 허용 출처와 반드시 같아야 한다.
+      - "8092:80"
+    networks: [lxp-net]
+
+networks:
+  lxp-net:
+    name: lxp-net
+    external: true
