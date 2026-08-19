@@ -79,26 +79,7 @@ def states_absence(body: str) -> bool:
 # 다만 남발은 봐야 하므로 이 값을 넘으면 따로 센다.
 OVER_CITE_WATCH = 3
 
-# judge 프롬프트를 절차형으로 쓴 이유.
-#
-# 처음에는 "일치하는지 판정하라"고 한 문장으로 물었고, "정답 요지에 없는 내용을
-# 덧붙였더라도 틀리지 않았다면 통과"라는 지시도 넣었다. 그런데 지켜지지 않았다.
-# E001에서 답변이 정답 요지("09:00 이전 QR")와 일치했는데도, 뒤에 덧붙인 지각
-# 기준(09:00~14:00, 규정에 있는 사실)을 "배치된다"며 FAIL을 냈다.
-# '정답 요지에 없음'과 '정답 요지와 틀림'을 뭉갠 것이다.
-#
-# 그래서 지시를 더 넣는 대신 판정을 여러 질문으로 쪼갰다. 누락 검사와 모순 검사를
-# 분리하면 "추가 정보는 모순일 때만 문제"라는 것이 절차로 강제된다.
-# 결론을 마지막에 쓰게 한 것도 의도적이다. 먼저 PASS/FAIL을 쓰게 하면 결론을
-# 정한 뒤 이유를 만든다. thinking을 껐으므로 출력 순서가 곧 판단 순서다.
-#
-# 모순 검사를 분리하자 오판이 누락 검사로 옮겨갔다. gold가 근거 청크의 내용을
-# 폭넓게 담고 있어서 질문이 묻지 않은 사실까지 요구했다. E021은 '백엔드 자부담비'를
-# 물었는데 gold의 'AI/게임은 50만 원'이 답변에 없다고 FAIL이 났고, judge 스스로
-# "백엔드 질문이므로 해당 안 됨"이라 쓰면서도 누락으로 셌다. E001은 지각을 물었는데
-# gold의 퇴실 QR 시각을, E016은 이월 여부를 물었는데 gold의 운영진 문의 안내를
-# 요구했다. gold 53개를 다시 쓰는 대신 범위 선별 단계를 앞에 붙였다.
-JUDGE_PROMPT = """조직 규정 QA 챗봇의 답변을 채점한다.
+JUDGE_PROMPT = """다음은 조직 규정 QA 챗봇의 답변을 채점하는 작업이다.
 
 [질문]
 {question}
@@ -109,37 +90,12 @@ JUDGE_PROMPT = """조직 규정 QA 챗봇의 답변을 채점한다.
 [챗봇 답변]
 {answer}
 
-아래 순서를 그대로 따라 판정하라.
+챗봇 답변이 정답 요지와 사실관계가 일치하는지 판정하라.
+표현이 달라도 내용이 맞으면 통과다. 정답 요지에 없는 내용을 덧붙였더라도
+그것이 틀리지 않았다면 통과로 본다. 수치·기준·조건이 틀렸으면 실패다.
 
-1단계 (범위 선별). 정답 요지에 담긴 사실을 하나씩 나열하고, 각 사실이 **이 질문에
-답하는 데 필요한지** 표시한다. 정답 요지는 근거 문서의 내용을 폭넓게 담고 있어서
-질문이 묻지 않은 사실이 섞여 있다. 그런 것은 '불필요'로 표시한다.
-  예: 질문이 '백엔드는 자부담비 총 얼마인가'인데 정답 요지에 'AI/게임은 50만 원'이
-  있다면, 묻지 않은 다른 트랙에 대한 사실이므로 불필요다.
-  예: 질문이 'QR 몇 시까지 찍어야 지각 안 되나'인데 정답 요지에 '퇴실은 17:50 이후
-  QR 체크 필수'가 있다면, 출근이 아니라 퇴실에 대한 사실이므로 불필요다.
-
-2단계 (누락 검사). 1단계에서 '필요'로 표시한 사실만 대상으로, 각각이 챗봇 답변에
-있는지 표시한다. 표현이 달라도 같은 내용이면 있는 것으로 본다. 다만 수치·기준·
-조건은 값이 같아야 있는 것으로 본다.
-
-3단계 (모순 검사). 챗봇 답변에서 정답 요지와 어긋나는 서술을 찾는다.
-정답 요지에 없는 내용은 그 자체로 문제가 아니다. 정답 요지가 다루지 않은 다른
-사항을 덧붙인 것일 수 있다. **같은 사항을 다르게 말한 경우만** 어긋남이다.
-  예: 정답 요지가 '정상 출석은 09:00 이전 QR'인데 답변이 '지각은 09:00~14:00
-  출근'을 덧붙였다면, 이는 지각 기준이라는 다른 사항에 대한 서술이므로
-  어긋남이 아니다.
-
-4단계 (결론). 2단계에서 빠진 사실이 없고 3단계에서 어긋남이 없으면 PASS,
-그 외에는 FAIL.
-
-출력 형식:
-1단계: <정답 요지의 사실별로 필요/불필요와 그 이유>
-2단계: <필요한 사실별로 있음/없음>
-3단계: <어긋남 있음/없음과 그 근거>
-판정: PASS 또는 FAIL
+첫 줄에 PASS 또는 FAIL 만 쓰고, 둘째 줄에 한 문장으로 이유를 쓴다.
 """
-_VERDICT_RE = re.compile(r"판정\s*[:：]\s*\**\s*(PASS|FAIL)", re.IGNORECASE)
 
 
 def get_client():
@@ -188,25 +144,6 @@ def generate(client, model, contents, system_instruction=None):
             time.sleep(delay)
             delay *= 2
     return None
-
-
-def judge_verdict(text):
-    """judge 응답에서 (통과 여부, 전문)을 뽑는다.
-
-    결론이 마지막 줄이라 첫 줄만 보면 안 된다. `판정:` 라인을 찾고, 없으면
-    PASS/FAIL 중 하나만 나타난 경우에 한해 그것으로 본다. 둘 다 또는 아무것도
-    없으면 판정 불가이므로 실패로 둔다. 통과로 처리하면 지표가 부풀려진다.
-    """
-    if not text:
-        return False, ""
-    m = _VERDICT_RE.search(text)
-    if m:
-        return m.group(1).upper() == "PASS", text.strip()
-    up = text.upper()
-    has_pass, has_fail = "PASS" in up, "FAIL" in up
-    if has_pass != has_fail:
-        return has_pass, text.strip()
-    return False, text.strip()
 
 
 def sha(text: str) -> str:
@@ -466,81 +403,6 @@ def rescore(path, tag):
     print(f"\n저장: {out_path.relative_to(ROOT)}")
 
 
-def rejudge(path, model, rpm, tag):
-    """저장된 답변에 judge만 다시 돌린다. 챗봇 응답은 재생성하지 않는다.
-
-    재생성하면 응답까지 달라져서 judge 수정의 효과만 분리할 수 없다.
-    답변가능 문항만 대상이라 요청 수도 절반으로 줄어든다.
-    """
-    if not path.exists():
-        raise SystemExit(f"파일이 없습니다: {path}")
-    prev = json.loads(path.read_text(encoding="utf-8"))
-    eval_items = {json.loads(l)["id"]: json.loads(l)
-                  for l in (ROOT / prev["eval_file"]).open(encoding="utf-8") if l.strip()}
-
-    client = get_client()
-    interval = 60.0 / rpm
-    targets = [r for r in prev["items"]
-               if r["type"] in ANSWERABLE_TYPES and not r.get("error")]
-
-    print(f"재판정: {path.name} · {len(targets)}문항 (답변은 재생성하지 않음)")
-    if tag:
-        print(f"태그: {tag}")
-    print()
-
-    verdicts = {}
-    for i, old in enumerate(targets, 1):
-        item = eval_items[old["id"]]
-        out = generate(client, model, JUDGE_PROMPT.format(
-            question=item["q"], gold=item["gold"], answer=old["body"]))
-        ok, reason = judge_verdict(out)
-        verdicts[old["id"]] = (ok, reason)
-        was = old.get("judge_pass")
-        mark = "" if was is None or was == ok else f"  <- 이전 {'PASS' if was else 'FAIL'}에서 바뀜"
-        print(f"  {i:>3}/{len(targets)} {old['id']} {'PASS' if ok else 'FAIL'}{mark}")
-        if i < len(targets):
-            time.sleep(interval)
-
-    results = []
-    for old in prev["items"]:
-        r = dict(old)
-        if old["id"] in verdicts:
-            r["judge_pass"], r["judge_reason"] = verdicts[old["id"]]
-        results.append(r)
-
-    agg = aggregate(results)
-    judged = [r for r in results if "judge_pass" in r]
-    agg["정답률 통과"] = sum(1 for r in judged if r["judge_pass"])
-    agg["정답률 분모"] = len(judged)
-
-    # 리포트보다 먼저 저장한다. 집계나 출력에서 예외가 나면 방금 쓴 API 요청이
-    # 전부 날아간다(실제로 한 번 겪었다: 53요청 손실).
-    out_path, n, _ = next_run_path()
-    out_path.write_text(json.dumps({
-        "run": n, "model": prev["model"], "eval_file": prev["eval_file"],
-        "tag": tag or f"rejudge of {path.name}", "judge": True,
-        "provenance": prev.get("provenance") or {},
-        "judge_prompt_sha": sha(JUDGE_PROMPT), "judged_by_git_sha": git_sha(),
-        "rejudged_from": path.name, "summary": agg, "items": results,
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n저장: {out_path.relative_to(ROOT)}")
-
-    report(results, agg, True)
-
-    changed = []
-    for old in prev["items"]:
-        eid = old["id"]
-        if eid not in verdicts:
-            continue
-        was, now = old.get("judge_pass"), verdicts[eid][0]
-        if was is not None and was != now:
-            changed.append((eid, was, now))
-
-    print(f"\njudge 판정이 바뀐 문항: {len(changed)}건")
-    for eid, was, now in changed:
-        print(f"  {eid}: {'PASS' if was else 'FAIL'} -> {'PASS' if now else 'FAIL'}")
-
-
 def main():
     # 60문항 + judge는 10분 가까이 걸린다. 파이썬이 파일로 리다이렉트될 때
     # stdout을 블록 버퍼링해서, 그대로 두면 실행이 끝날 때까지 진행 상황이 안 보인다.
@@ -562,16 +424,10 @@ def main():
     # 채점 기준만 바꿨을 때 쓴다. 저장된 응답을 그대로 다시 채점하므로 API를 부르지
     # 않는다. 재생성하면 응답이 함께 달라져서 기준 변경의 효과만 따로 볼 수 없다.
     ap.add_argument("--rescore", help="저장된 run_NNN.json을 새 기준으로 재채점")
-    # judge 프롬프트만 바꿨을 때 쓴다. 챗봇 응답은 저장된 것을 쓰므로 judge 수정의
-    # 효과만 분리되고, 답변가능 문항만 대상이라 요청 수도 절반이다.
-    ap.add_argument("--rejudge", help="저장된 run_NNN.json에 judge만 다시 실행")
     args = ap.parse_args()
 
     if args.rescore:
         rescore(Path(args.rescore), args.tag)
-        return
-    if args.rejudge:
-        rejudge(Path(args.rejudge), args.model, args.rpm, args.tag)
         return
 
     eval_path = ROOT / args.eval_file
@@ -618,7 +474,8 @@ def main():
             time.sleep(interval)
             verdict = generate(client, args.model, JUDGE_PROMPT.format(
                 question=item["q"], gold=item["gold"], answer=r["body"]))
-            r["judge_pass"], r["judge_reason"] = judge_verdict(verdict)
+            r["judge_pass"] = bool(verdict) and verdict.lstrip().upper().startswith("PASS")
+            r["judge_reason"] = (verdict or "").strip()
 
         results.append(r)
 
@@ -650,23 +507,6 @@ def main():
         judged = [r for r in results if "judge_pass" in r]
         agg["정답률 통과"] = sum(1 for r in judged if r["judge_pass"])
         agg["정답률 분모"] = len(judged)
-
-    # 리포트보다 먼저 저장한다. 60문항 + judge는 요청 113건이라, 출력 코드에서
-    # 예외가 나서 결과를 잃으면 손실이 크다.
-    out_path, n, prev_path = next_run_path()
-    out_path.write_text(json.dumps({
-        "run": n,
-        "model": args.model,
-        "eval_file": args.eval_file,
-        "tag": args.tag,
-        "judge": args.judge,
-        "provenance": prov,
-        "judge_prompt_sha": sha(JUDGE_PROMPT) if args.judge else None,
-        "summary": agg,
-        "items": results,
-    }, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"\n저장: {out_path.relative_to(ROOT)}")
-
     report(results, agg, args.judge)
 
     if agg["응답 실패"]:
@@ -675,7 +515,20 @@ def main():
     if by_type:
         print("실패 문항 유형별:", dict(by_type))
 
+    out_path, n, prev_path = next_run_path()
+    out_path.write_text(json.dumps({
+        "run": n,
+        "model": args.model,
+        "eval_file": args.eval_file,
+        "tag": args.tag,
+        "judge": args.judge,
+        "provenance": prov,
+        "summary": agg,
+        "items": results,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+
     print_regressions(results, prev_path, prov)
+    print(f"\n저장: {out_path.relative_to(ROOT)}")
 
 
 if __name__ == "__main__":
