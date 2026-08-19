@@ -17,21 +17,47 @@ CONTEXT_PATH = Path(__file__).resolve().parent.parent / "data" / "context.txt"
 SYSTEM_INSTRUCTION = """너는 조직 규정 안내 챗봇이다. 아래 규정 문서만을 근거로 답한다.
 
 출력 형식 (반드시 지킬 것):
-1) 첫 줄: `근거: <청크ID>` — 쉼표로 구분해 여러 개 가능. 근거가 없으면 `근거: 없음`
+1) 첫 줄: `근거: <청크ID>` — 쉼표로 구분해 여러 개 가능
+
+   `근거:` 에는 답변 본문에서 사용한 대목을 **빠짐없이** 적는다.
+   질문에 답하는 값이 여러 문서에 서로 다르게 적혀 있으면 그 문서들을 **모두**
+   `근거:` 에 넣는다. 한쪽만 근거로 삼지 않는다.
+
+   질문에 답하는 내용이 규정 문서에 아예 없을 때만 `근거: 없음` 이라고 쓴다.
+   이때 참고가 될 만한 다른 제도나 대목이 있으면 `참고:` 에 넣는다.
+   `근거: 없음` 이라고 썼으면 `근거:` 칸에는 청크ID를 하나도 넣지 않는다.
+
+     `근거: PAY-003-001, FAQ-010-017`      (값이 문서마다 달라 양쪽을 근거로)
+     `근거: 없음 / 참고: FAQ-010-011`       (규정에 없고, 다른 제도를 안내)
+
 2) 둘째 줄: `---`
 3) 셋째 줄부터: 답변 본문
 
 규칙:
-- 규정 문서에 없는 내용은 추측하지 않는다. `근거: 없음` 으로 시작하고,
-  규정에 해당 내용이 없다고 answer한 뒤 운영진 문의를 안내한다.
+- 규정 문서에 없는 내용은 추측하지 않는다. 질문에 해당하는 규정이 없으면
+  `근거: 없음` 으로 시작하고, 본문 첫 문장에서 "규정에 없다"는 사실을 먼저
+  분명히 밝힌 뒤 운영진 문의를 안내한다.
+- 이름이 비슷한 다른 제도를 질문의 답인 것처럼 설명하지 않는다. 예를 들어
+  '연차휴가'를 물었는데 규정에 없고 성격이 다른 '월 1회 휴가'만 있다면,
+  먼저 연차휴가 규정이 없다고 밝히고 나서 다른 제도임을 명시해 안내한다.
 - 문서마다 값이 서로 다르면 하나로 단정하지 않는다. 양쪽 값과 각 출처를
   함께 제시하고 운영진 확인을 안내한다.
-- 첫 줄의 청크ID는 규정 본문에 실제로 있는 것만 쓴다. 지어내지 않는다.
+- 청크ID는 `근거:` 와 `참고:` 양쪽 모두, 규정 본문의 대괄호에 있는 전체 형태를
+  그대로 쓴다. 실제로 있는 것만 쓰고 지어내지 않으며, 문서 단위로 줄여 쓰지 않는다.
+  (`SPACE-006` 처럼 쓰면 안 되고 `SPACE-006-004` 로 써야 한다.)
 - 본문에서 문서를 가리킬 때는 청크ID가 아니라 사람이 읽는 문서명으로 쓴다.
 """
 
 _ANSWER_HEADER = "근거:"
+_REF_HEADER = "참고:"
 _SEPARATOR = "---"
+_NO_BASIS = "없음"
+
+
+def _parse_ids(raw: str) -> list[str]:
+    if raw.strip() in (_NO_BASIS, ""):
+        return []
+    return [c.strip() for c in raw.split(",") if c.strip()]
 
 
 def load_context() -> str:
@@ -50,20 +76,26 @@ def build_prompt(question: str, context: str | None = None) -> str:
     return f"{context}\n\n========\n\n[사용자 질문]\n{question}\n"
 
 
-def split_answer(text: str) -> tuple[list[str], str]:
-    """모델 응답을 (청크ID 목록, 본문)으로 분리한다.
+def split_answer(text: str) -> tuple[list[str], list[str], str]:
+    """모델 응답을 (근거 청크ID, 참고 청크ID, 본문)으로 분리한다.
 
-    `근거: 없음` 이면 빈 목록을 돌려준다. 형식을 안 지킨 응답은
-    청크ID 목록을 None이 아니라 빈 목록으로 두고 전체를 본문으로 본다.
+    `근거:` 는 질문에 직접 답하는 근거, `참고:` 는 관련은 있으나 질문의 답이
+    아닌 대목이다. 둘을 나누는 이유는, 규정에 없는 질문에 "없다"고 밝히면서
+    관련 제도를 안내하는 것이 정답 행동인데 채널이 하나면 그 둘을 구분할 수
+    없기 때문이다. 관련 대목을 인용하는 순간 "규정에 있다"는 주장이 되어버린다.
+
+    `근거: 없음` 이면 근거 목록이 빈다. 형식을 안 지킨 응답은 양쪽 목록을
+    비우고 전체를 본문으로 본다.
     """
     lines = text.lstrip().split("\n")
     if not lines or not lines[0].startswith(_ANSWER_HEADER):
-        return [], text.strip()
+        return [], [], text.strip()
 
-    raw = lines[0][len(_ANSWER_HEADER):].strip()
-    ids = [] if raw in ("없음", "") else [c.strip() for c in raw.split(",") if c.strip()]
+    head = lines[0][len(_ANSWER_HEADER):]
+    basis_raw, _, ref_raw = head.partition(_REF_HEADER)
+    basis_raw = basis_raw.strip().rstrip("/").strip()
 
     body_start = 1
     if len(lines) > 1 and lines[1].strip() == _SEPARATOR:
         body_start = 2
-    return ids, "\n".join(lines[body_start:]).strip()
+    return _parse_ids(basis_raw), _parse_ids(ref_raw), "\n".join(lines[body_start:]).strip()

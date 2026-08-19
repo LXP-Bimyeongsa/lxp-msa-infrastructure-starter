@@ -151,7 +151,7 @@ def load_chunk_ids():
 
 def score_item(item, raw_answer, chunk_ids):
     """문항 하나를 채점한다. 판정은 전부 pass/fail 로 떨어뜨린다."""
-    cited, body = split_answer(raw_answer)
+    cited, refs, body = split_answer(raw_answer)
     truth = set(item["answer_chunks"])
     cited_set = set(cited)
     qtype = item["type"]
@@ -161,6 +161,7 @@ def score_item(item, raw_answer, chunk_ids):
         "type": qtype,
         "q": item["q"],
         "cited": cited,
+        "refs": refs,
         "truth": sorted(truth),
         "answer": raw_answer,
         "body": body,
@@ -170,16 +171,21 @@ def score_item(item, raw_answer, chunk_ids):
     r["format_ok"] = raw_answer.lstrip().startswith("근거:")
 
     # 청크ID 실존: 인용한 ID가 실제 규정에 있는가. 11번 런타임 가드와 같은 판정.
-    ghost = [c for c in cited if c not in chunk_ids]
+    # 참고로 단 것도 사용자에게 보이므로 같이 검증한다.
+    ghost = [c for c in cited + refs if c not in chunk_ids]
     r["ghost_ids"] = ghost
     r["exists_ok"] = not ghost
 
     if qtype == "unanswerable":
-        # 환각: 규정에 없는데 있는 것처럼 단정했는가. 관련 제도를 안내하며 근거를
-        # 인용하는 것은 정답 행동이므로, 인용 유무가 아니라 부재 명시 여부로 본다.
+        # 환각 판정은 두 조건을 같이 본다.
+        #  - 본문에서 부재를 밝혔는가
+        #  - 질문에 직접 답하는 근거가 있다고 주장하지 않았는가(`근거:`가 비었는가)
+        # 관련 제도는 `참고:`로 안내할 수 있게 됐으므로, 규정에 없는 질문에
+        # `근거:`를 채우는 것은 "규정에 있다"는 주장이 된다.
         r["denial_stated"] = states_absence(body)
-        r["guided"] = bool(cited_set)  # 부재를 밝히면서 관련 근거까지 짚었는가
-        r["hallucinated"] = not r["denial_stated"]
+        r["direct_claim"] = bool(cited_set)
+        r["guided"] = bool(refs)  # 부재를 밝히면서 관련 대목까지 짚었는가
+        r["hallucinated"] = not r["denial_stated"] or r["direct_claim"]
         r["pass"] = not r["hallucinated"] and r["exists_ok"]
     else:
         # 부당 회피: 답할 수 있는데 모른다고 했는가.
@@ -187,10 +193,17 @@ def score_item(item, raw_answer, chunk_ids):
         # 출처 일치는 누락(recall)만 본다. 정답 키가 최소 근거라서
         # 초과 인용은 대개 정당한 관련 근거다. 따로 관측만 한다.
         extra = cited_set - truth
-        r["missing_chunks"] = sorted(truth - cited_set)
         r["extra_chunks"] = sorted(extra)
         r["over_cited"] = len(extra)
-        r["source_ok"] = truth.issubset(cited_set)
+        # 누락은 `근거`와 `참고`를 합쳐서 본다. 근거를 실제로 짚었는지가 요점이고,
+        # 어느 칸에 넣었는지는 아니다. conflict 문항에서 모델이 한쪽 문서를 주 근거로,
+        # 상대 문서를 참고로 나눠 적었는데(E054·E055) 답변 자체는 양쪽 값과 출처를
+        # 모두 제시한 정답 행동이었다. 칸 배치를 이유로 누락으로 세면 오판이다.
+        # 다만 배치 자체는 관측해야 하므로 따로 기록한다.
+        surfaced = cited_set | set(refs)
+        r["truth_in_refs"] = sorted(truth & set(refs) - cited_set)
+        r["missing_chunks"] = sorted(truth - surfaced)
+        r["source_ok"] = truth.issubset(surfaced)
         r["pass"] = r["source_ok"] and r["exists_ok"] and not r["evaded"]
 
     return r
@@ -202,11 +215,13 @@ def blank_result(item):
         "id": item["id"], "type": item["type"], "q": item["q"],
         "cited": [], "truth": sorted(item["answer_chunks"]),
         "answer": "", "body": "", "format_ok": False,
-        "ghost_ids": [], "exists_ok": False, "pass": False, "error": True,
-        **({"hallucinated": True, "denial_stated": False, "guided": False}
+        "ghost_ids": [], "exists_ok": False, "pass": False, "error": True, "refs": [],
+        **({"hallucinated": True, "denial_stated": False,
+            "direct_claim": False, "guided": False}
            if item["type"] == "unanswerable"
            else {"evaded": True, "source_ok": False, "over_cited": 0,
-                 "missing_chunks": sorted(item["answer_chunks"]), "extra_chunks": []}),
+                 "missing_chunks": sorted(item["answer_chunks"]),
+                 "extra_chunks": [], "truth_in_refs": []}),
     }
 
 
@@ -230,6 +245,7 @@ def aggregate(results):
         f"과잉 {OVER_CITE_WATCH}개 초과 문항": sum(
             1 for r in ans if r.get("over_cited", 0) > OVER_CITE_WATCH),
         "부재 명시 + 관련 안내": sum(1 for r in una if r.get("guided") and not r["hallucinated"]),
+        "정답 근거를 참고로 배치": sum(1 for r in ans if r.get("truth_in_refs")),
     }
 
 
@@ -285,7 +301,8 @@ def report(results, agg, judge=False):
     print("=" * 46)
     print(f"관측: 과잉 인용 {agg['과잉 인용 총계']}개"
           f" ({OVER_CITE_WATCH}개 초과 문항 {agg[f'과잉 {OVER_CITE_WATCH}개 초과 문항']}건)"
-          f" · 부재 명시 + 관련 안내 {agg['부재 명시 + 관련 안내']}/{agg['규정외 분모']}")
+          f" · 부재 명시 + 관련 안내 {agg['부재 명시 + 관련 안내']}/{agg['규정외 분모']}"
+          f" · 정답 근거를 참고로 배치 {agg['정답 근거를 참고로 배치']}건")
 
 
 def rescore(path, tag):
