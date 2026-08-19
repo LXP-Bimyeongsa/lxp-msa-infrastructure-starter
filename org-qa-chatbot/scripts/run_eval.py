@@ -40,6 +40,41 @@ THINKING_BUDGET = 1
 
 ANSWERABLE_TYPES = {"normal", "multi_hop", "conflict"}
 
+# 규정에 없는 질문에서 "없다"고 밝혔는지 판정하는 표현들.
+#
+# 인용 유무로 판정하면 안 된다. unanswerable 문항의 gold를 보면 대부분이 단순
+# 거부가 아니라 "지어내지 말고 ~로 안내해야 함"을 정답 행동으로 적어놨다.
+# (E029 그룹웨어 확인 / E041 슬랙 채널 / E058 운영진 문의 / E060 장려금과 구분)
+# 관련 제도를 짚어주려면 그 근거를 인용하게 되므로, 인용했다는 이유로 환각으로
+# 세면 정답 행동이 실패로 찍힌다.
+#
+# 실제로 막아야 할 것은 "규정에 없는 내용을 있는 것처럼 단정하는 것"이므로
+# 부재를 명시했는지로 판정한다.
+# 부재를 밝히는 표현은 어미 변화가 많아서 문자열 목록만으로는 새는 게 생긴다.
+# ("기재되어 있지 않습니다"를 놓쳐 정답 행동을 환각으로 잘못 센 적이 있다.)
+# 그래서 '규정/문서/내용' 류 명사 뒤 일정 거리 안에 부정 표현이 오는 패턴으로 잡고,
+# 목록은 그 패턴에 안 걸리는 관용 표현만 남긴다.
+DENIAL_RE = re.compile(
+    r"(규정|문서|자료|지침|안내|기준|항목|내용|정보|사항)"
+    r"[^.!?\n]{0,60}?"
+    r"(없습니다|없음|없으며|없고|있지\s*않|되지\s*않|되어\s*있지\s*않)"
+)
+DENIAL_MARKERS = (
+    "확인할 수 없", "찾을 수 없", "확인되지 않", "알 수 없",
+    "규정하고 있지 않", "다루고 있지 않", "나와 있지 않",
+)
+
+
+def states_absence(body: str) -> bool:
+    return bool(DENIAL_RE.search(body)) or any(m in body for m in DENIAL_MARKERS)
+
+# 정답 키(answer_chunks)는 '반드시 포함해야 할 최소 근거'다. 그래서 pass 판정은
+# 누락(recall)만 본다. 초과 인용은 실패로 세지 않고 따로 관측만 한다.
+# 초과분이 대개 정당한 관련 근거이기 때문이다.
+# (E001은 지각 기준·점심시간 FAQ, E018은 conflict 짝인 FAQ와 법령 근거를 더 인용했다.)
+# 다만 남발은 봐야 하므로 이 값을 넘으면 따로 센다.
+OVER_CITE_WATCH = 3
+
 JUDGE_PROMPT = """다음은 조직 규정 QA 챗봇의 답변을 채점하는 작업이다.
 
 [질문]
@@ -140,17 +175,22 @@ def score_item(item, raw_answer, chunk_ids):
     r["exists_ok"] = not ghost
 
     if qtype == "unanswerable":
-        # 환각: 규정에 없는 질문인데 근거를 대고 답을 지어냈는가.
-        r["hallucinated"] = bool(cited_set)
+        # 환각: 규정에 없는데 있는 것처럼 단정했는가. 관련 제도를 안내하며 근거를
+        # 인용하는 것은 정답 행동이므로, 인용 유무가 아니라 부재 명시 여부로 본다.
+        r["denial_stated"] = states_absence(body)
+        r["guided"] = bool(cited_set)  # 부재를 밝히면서 관련 근거까지 짚었는가
+        r["hallucinated"] = not r["denial_stated"]
         r["pass"] = not r["hallucinated"] and r["exists_ok"]
     else:
         # 부당 회피: 답할 수 있는데 모른다고 했는가.
         r["evaded"] = not cited_set
-        # 출처 일치(문항 단위): 정답 청크를 전부 인용했고, 초과 인용이 1개 이하.
+        # 출처 일치는 누락(recall)만 본다. 정답 키가 최소 근거라서
+        # 초과 인용은 대개 정당한 관련 근거다. 따로 관측만 한다.
         extra = cited_set - truth
         r["missing_chunks"] = sorted(truth - cited_set)
         r["extra_chunks"] = sorted(extra)
-        r["source_ok"] = truth.issubset(cited_set) and len(extra) <= 1
+        r["over_cited"] = len(extra)
+        r["source_ok"] = truth.issubset(cited_set)
         r["pass"] = r["source_ok"] and r["exists_ok"] and not r["evaded"]
 
     return r
@@ -163,8 +203,9 @@ def blank_result(item):
         "cited": [], "truth": sorted(item["answer_chunks"]),
         "answer": "", "body": "", "format_ok": False,
         "ghost_ids": [], "exists_ok": False, "pass": False, "error": True,
-        **({"hallucinated": False} if item["type"] == "unanswerable"
-           else {"evaded": True, "source_ok": False,
+        **({"hallucinated": True, "denial_stated": False, "guided": False}
+           if item["type"] == "unanswerable"
+           else {"evaded": True, "source_ok": False, "over_cited": 0,
                  "missing_chunks": sorted(item["answer_chunks"]), "extra_chunks": []}),
     }
 
@@ -179,11 +220,16 @@ def aggregate(results):
         "형식 위반": sum(1 for r in results if not r["format_ok"]),
         "인용 청크 총계": sum(len(r["cited"]) for r in results),
         "실존하지 않는 청크ID": sum(len(r["ghost_ids"]) for r in results),
-        "출처 일치 실패": sum(1 for r in ans if not r["source_ok"]),
+        "근거 누락": sum(1 for r in ans if not r["source_ok"]),
         "부당 회피": sum(1 for r in ans if r["evaded"]),
         "답변가능 분모": len(ans),
         "환각": sum(1 for r in una if r["hallucinated"]),
         "규정외 분모": len(una),
+        # 아래 둘은 실패가 아니라 관측치다.
+        "과잉 인용 총계": sum(r.get("over_cited", 0) for r in ans),
+        f"과잉 {OVER_CITE_WATCH}개 초과 문항": sum(
+            1 for r in ans if r.get("over_cited", 0) > OVER_CITE_WATCH),
+        "부재 명시 + 관련 안내": sum(1 for r in una if r.get("guided") and not r["hallucinated"]),
     }
 
 
@@ -217,6 +263,76 @@ def print_regressions(results, prev_path):
         print("  ※ 집계가 좋아졌어도 깨진 문항이 있으면 그 수정은 재검토 대상이다.")
 
 
+def report(results, agg, judge=False):
+    """집계표 출력. 실행 경로와 재채점 경로가 같은 표를 쓴다."""
+    print("\n" + "=" * 46)
+    print(f"{'지표':<20}{'실패':>8}{'분모':>8}")
+    print("-" * 46)
+    rows = [
+        ("형식 위반", agg["형식 위반"], agg["문항 수"]),
+        ("없는 청크ID", agg["실존하지 않는 청크ID"], agg["인용 청크 총계"]),
+        ("근거 누락", agg["근거 누락"], agg["답변가능 분모"]),
+        ("부당 회피", agg["부당 회피"], agg["답변가능 분모"]),
+        ("환각", agg["환각"], agg["규정외 분모"]),
+    ]
+    if judge:
+        judged = [r for r in results if "judge_pass" in r]
+        rows.append(("정답률 실패",
+                     len(judged) - sum(1 for r in judged if r["judge_pass"]), len(judged)))
+    for name, fail, denom in rows:
+        pad = 20 - (len(name) - len(name.encode("ascii", "ignore").decode()))
+        print(f"{name:<{pad}}{fail:>8}{denom:>8}")
+    print("=" * 46)
+    print(f"관측: 과잉 인용 {agg['과잉 인용 총계']}개"
+          f" ({OVER_CITE_WATCH}개 초과 문항 {agg[f'과잉 {OVER_CITE_WATCH}개 초과 문항']}건)"
+          f" · 부재 명시 + 관련 안내 {agg['부재 명시 + 관련 안내']}/{agg['규정외 분모']}")
+
+
+def rescore(path, tag):
+    """저장된 응답을 새 채점 기준으로 다시 채점한다. API 호출 없음."""
+    if not path.exists():
+        raise SystemExit(f"파일이 없습니다: {path}")
+    prev = json.loads(path.read_text(encoding="utf-8"))
+    chunk_ids = load_chunk_ids()
+
+    eval_items = {json.loads(l)["id"]: json.loads(l)
+                  for l in (ROOT / prev["eval_file"]).open(encoding="utf-8") if l.strip()}
+
+    results = []
+    for old in prev["items"]:
+        item = eval_items[old["id"]]
+        if old.get("error"):
+            results.append(blank_result(item))
+            continue
+        r = score_item(item, old["answer"], chunk_ids)
+        for k in ("judge_pass", "judge_reason"):
+            if k in old:
+                r[k] = old[k]
+        results.append(r)
+
+    old_pass = {r["id"]: r["pass"] for r in prev["items"]}
+    changed = [(r["id"], old_pass[r["id"]], r["pass"])
+               for r in results if old_pass.get(r["id"]) != r["pass"]]
+
+    print(f"재채점: {path.name} (모델 {prev['model']}, {len(results)}문항) — API 호출 없음")
+    if tag:
+        print(f"태그: {tag}")
+    agg = aggregate(results)
+    report(results, agg, prev.get("judge", False))
+
+    print(f"\n기준 변경으로 판정이 바뀐 문항: {len(changed)}건")
+    for eid, was, now in changed:
+        print(f"  {eid}: {'통과' if was else '실패'} -> {'통과' if now else '실패'}")
+
+    out_path, n, _ = next_run_path()
+    out_path.write_text(json.dumps({
+        "run": n, "model": prev["model"], "eval_file": prev["eval_file"],
+        "tag": tag or f"rescore of {path.name}", "judge": prev.get("judge", False),
+        "rescored_from": path.name, "summary": agg, "items": results,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"\n저장: {out_path.relative_to(ROOT)}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=DEFAULT_MODEL)
@@ -228,7 +344,14 @@ def main():
     ap.add_argument("--rpm", type=int, default=DEFAULT_RPM, help="분당 요청 상한")
     ap.add_argument("--judge", action="store_true", help="정답률까지 채점 (요청 2배)")
     ap.add_argument("--tag", default="", help="이 회차에서 무엇을 바꿨는지 (기록용)")
+    # 채점 기준만 바꿨을 때 쓴다. 저장된 응답을 그대로 다시 채점하므로 API를 부르지
+    # 않는다. 재생성하면 응답이 함께 달라져서 기준 변경의 효과만 따로 볼 수 없다.
+    ap.add_argument("--rescore", help="저장된 run_NNN.json을 새 기준으로 재채점")
     args = ap.parse_args()
+
+    if args.rescore:
+        rescore(Path(args.rescore), args.tag)
+        return
 
     eval_path = ROOT / args.eval_file
     if not eval_path.exists():
@@ -279,15 +402,17 @@ def main():
         detail = ""
         if not r["pass"]:
             if r.get("hallucinated"):
-                detail = "환각"
+                detail = "환각 (규정에 없다고 밝히지 않음)"
             elif r.get("evaded"):
                 detail = "부당 회피"
             elif r["ghost_ids"]:
                 detail = f"없는 청크ID {r['ghost_ids']}"
             elif r.get("missing_chunks"):
-                detail = f"누락 {r['missing_chunks']}"
-            elif r.get("extra_chunks"):
-                detail = f"과잉 {r['extra_chunks']}"
+                detail = f"근거 누락 {r['missing_chunks']}"
+        elif r.get("over_cited"):
+            detail = f"(과잉 {r['over_cited']}개)"
+        elif r.get("guided"):
+            detail = "(부재 명시 + 관련 안내)"
         if not r["format_ok"]:
             detail = (detail + " / 형식 위반").lstrip(" /")
         print(f"  {i:>3}/{len(items)} {item['id']} [{r['type']:<12}] "
@@ -298,25 +423,11 @@ def main():
 
     # ── 집계 ──────────────────────────────────────────────
     agg = aggregate(results)
-    print("\n" + "=" * 46)
-    print(f"{'지표':<20}{'실패':>8}{'분모':>8}")
-    print("-" * 46)
-    rows = [
-        ("형식 위반", agg["형식 위반"], agg["문항 수"]),
-        ("없는 청크ID", agg["실존하지 않는 청크ID"], agg["인용 청크 총계"]),
-        ("출처 일치 실패", agg["출처 일치 실패"], agg["답변가능 분모"]),
-        ("부당 회피", agg["부당 회피"], agg["답변가능 분모"]),
-        ("환각", agg["환각"], agg["규정외 분모"]),
-    ]
     if args.judge:
         judged = [r for r in results if "judge_pass" in r]
         agg["정답률 통과"] = sum(1 for r in judged if r["judge_pass"])
         agg["정답률 분모"] = len(judged)
-        rows.append(("정답률 실패", len(judged) - agg["정답률 통과"], len(judged)))
-    for name, fail, denom in rows:
-        pad = 20 - (len(name) - len(name.encode("ascii", "ignore").decode()))
-        print(f"{name:<{pad}}{fail:>8}{denom:>8}")
-    print("=" * 46)
+    report(results, agg, args.judge)
 
     if agg["응답 실패"]:
         print(f"※ 응답을 못 받은 문항 {agg['응답 실패']}건은 전부 실패로 셌다.")
