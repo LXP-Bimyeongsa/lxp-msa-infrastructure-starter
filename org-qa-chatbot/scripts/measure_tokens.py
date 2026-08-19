@@ -20,7 +20,11 @@ from prompt import SYSTEM_INSTRUCTION, build_prompt, load_context  # noqa: E402
 
 # gemini-2.5-* 는 신규 사용자에게 더 이상 제공되지 않는다(404). 3.x 계열을 쓴다.
 # `-latest` 별칭은 뒤에서 모델이 바뀌어 회차 간 지표 비교가 무효가 되므로 쓰지 않는다.
-DEFAULT_MODEL = "gemini-3.6-flash"
+#
+# lite를 쓰는 이유는 무료 티어 RPD다. 3.6/3.5 Flash는 RPD 20이라 평가 60문항
+# 한 회차에 3일이 걸려 튜닝 루프가 성립하지 않는다. lite는 RPD 500이라
+# judge 채점까지 포함해도(120요청) 하루 안에 돈다.
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
 # 실측용 대표 질문. 평가셋에서 길이가 평균적인 것으로 골랐다.
 SAMPLE_QUESTION = "면접 때문에 조퇴하면 출석 인정도 받고 조퇴 카운트도 안 되나요?"
 # 응답 길이 가정. 실제 측정 전까지 쓰는 값이고, 8단계 이후 실측치로 바꾼다.

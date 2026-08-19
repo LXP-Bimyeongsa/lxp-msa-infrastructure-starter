@@ -1,0 +1,343 @@
+"""평가셋을 돌려 지표를 찍고 회차별 결과를 eval_results/run_NNN.json 에 남긴다.
+
+계획서 7번. 지표를 한 번에 같이 찍는 이유는, "근거를 반드시 인용하라"는 제약이
+정답률과 트레이드오프가 나기 때문이다. 출처·회피만 보고 튜닝한 뒤 마지막에
+정답률을 재면, 튜닝이 정답률을 깎았어도 어느 수정 때문인지 알 수 없다.
+
+집계 지표만 남기면 회귀를 못 잡는다(3개 고치고 3개 깨져도 동률). 그래서
+문항 단위 결과를 저장하고, 직전 회차와 비교해 pass -> fail 로 바뀐 문항을 따로 찍는다.
+
+사용법:
+    uv run python scripts/run_eval.py                 # 전체
+    uv run python scripts/run_eval.py --limit 10      # 앞 10문항만
+    uv run python scripts/run_eval.py --judge         # 정답률(judge)까지
+    uv run python scripts/run_eval.py --tag "회피 문구 완화"
+"""
+
+import argparse
+import json
+import os
+import re
+import sys
+import time
+from collections import Counter
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from prompt import SYSTEM_INSTRUCTION, build_prompt, load_context, split_answer  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+CHUNKS_PATH = ROOT / "data" / "chunks.jsonl"
+RESULTS_DIR = ROOT / "eval_results"
+
+DEFAULT_MODEL = "gemini-3.5-flash-lite"
+# 무료 티어 실측: RPM 15 / TPM 250,000. 요청당 입력이 약 17k라 TPM 쪽이 먼저 걸려
+# 분당 14요청이 상한이다. 여유를 두고 13으로 잡는다.
+DEFAULT_RPM = 13
+MAX_RETRIES = 3
+# flash-lite는 0을 거부하므로 허용 최소값. 자세한 이유는 gen_config() 주석 참고.
+THINKING_BUDGET = 1
+
+ANSWERABLE_TYPES = {"normal", "multi_hop", "conflict"}
+
+JUDGE_PROMPT = """다음은 조직 규정 QA 챗봇의 답변을 채점하는 작업이다.
+
+[질문]
+{question}
+
+[정답 요지]
+{gold}
+
+[챗봇 답변]
+{answer}
+
+챗봇 답변이 정답 요지와 사실관계가 일치하는지 판정하라.
+표현이 달라도 내용이 맞으면 통과다. 정답 요지에 없는 내용을 덧붙였더라도
+그것이 틀리지 않았다면 통과로 본다. 수치·기준·조건이 틀렸으면 실패다.
+
+첫 줄에 PASS 또는 FAIL 만 쓰고, 둘째 줄에 한 문장으로 이유를 쓴다.
+"""
+
+
+def get_client():
+    from google import genai
+    from dotenv import load_dotenv
+
+    load_dotenv(ROOT / ".env")
+    key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    if not key:
+        raise SystemExit("GEMINI_API_KEY가 없습니다. org-qa-chatbot/.env 를 확인하세요.")
+    return genai.Client(api_key=key)
+
+
+def gen_config(system_instruction=None):
+    from google.genai import types
+
+    return types.GenerateContentConfig(
+        temperature=0,
+        # 규정 조회는 추론 난이도가 낮으므로 thinking을 최소로 둔다. 응답 토큰과
+        # 첫 토큰 지연이 줄어든다. 정답률이 목표에 못 미치면 이 값만 올려 한 회차
+        # 더 돌려서 개선폭을 따로 확인한다.
+        #
+        # flash-lite는 thinking_budget=0을 거부한다(400 INVALID_ARGUMENT).
+        # 허용되는 최소값이 1이고, 이 값이면 사고 토큰이 실제로 잡히지 않는다.
+        thinking_config=types.ThinkingConfig(thinking_budget=THINKING_BUDGET),
+        system_instruction=system_instruction,
+    )
+
+
+def generate(client, model, contents, system_instruction=None):
+    """429는 지수 백오프로 재시도한다(계획서 12번). 끝내 실패하면 None."""
+    from google.genai import errors
+
+    delay = 2.0
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            resp = client.models.generate_content(
+                model=model, contents=contents, config=gen_config(system_instruction)
+            )
+            return (resp.text or "").strip()
+        except errors.ClientError as e:
+            if getattr(e, "code", None) != 429 or attempt == MAX_RETRIES:
+                print(f"    [실패] {str(e)[:140]}")
+                return None
+            print(f"    [429] {delay:.0f}초 후 재시도 ({attempt + 1}/{MAX_RETRIES})")
+            time.sleep(delay)
+            delay *= 2
+    return None
+
+
+def load_chunk_ids():
+    if not CHUNKS_PATH.exists():
+        raise SystemExit("chunks.jsonl이 없습니다. build_index.py를 먼저 실행하세요.")
+    with CHUNKS_PATH.open(encoding="utf-8") as f:
+        return {json.loads(line)["chunk_id"] for line in f if line.strip()}
+
+
+def score_item(item, raw_answer, chunk_ids):
+    """문항 하나를 채점한다. 판정은 전부 pass/fail 로 떨어뜨린다."""
+    cited, body = split_answer(raw_answer)
+    truth = set(item["answer_chunks"])
+    cited_set = set(cited)
+    qtype = item["type"]
+
+    r = {
+        "id": item["id"],
+        "type": qtype,
+        "q": item["q"],
+        "cited": cited,
+        "truth": sorted(truth),
+        "answer": raw_answer,
+        "body": body,
+    }
+
+    # 형식 준수: 첫 줄이 `근거:` 로 시작했는가.
+    r["format_ok"] = raw_answer.lstrip().startswith("근거:")
+
+    # 청크ID 실존: 인용한 ID가 실제 규정에 있는가. 11번 런타임 가드와 같은 판정.
+    ghost = [c for c in cited if c not in chunk_ids]
+    r["ghost_ids"] = ghost
+    r["exists_ok"] = not ghost
+
+    if qtype == "unanswerable":
+        # 환각: 규정에 없는 질문인데 근거를 대고 답을 지어냈는가.
+        r["hallucinated"] = bool(cited_set)
+        r["pass"] = not r["hallucinated"] and r["exists_ok"]
+    else:
+        # 부당 회피: 답할 수 있는데 모른다고 했는가.
+        r["evaded"] = not cited_set
+        # 출처 일치(문항 단위): 정답 청크를 전부 인용했고, 초과 인용이 1개 이하.
+        extra = cited_set - truth
+        r["missing_chunks"] = sorted(truth - cited_set)
+        r["extra_chunks"] = sorted(extra)
+        r["source_ok"] = truth.issubset(cited_set) and len(extra) <= 1
+        r["pass"] = r["source_ok"] and r["exists_ok"] and not r["evaded"]
+
+    return r
+
+
+def blank_result(item):
+    """응답 자체를 못 받은 문항. 통과로 세면 안 되므로 전부 실패로 둔다."""
+    return {
+        "id": item["id"], "type": item["type"], "q": item["q"],
+        "cited": [], "truth": sorted(item["answer_chunks"]),
+        "answer": "", "body": "", "format_ok": False,
+        "ghost_ids": [], "exists_ok": False, "pass": False, "error": True,
+        **({"hallucinated": False} if item["type"] == "unanswerable"
+           else {"evaded": True, "source_ok": False,
+                 "missing_chunks": sorted(item["answer_chunks"]), "extra_chunks": []}),
+    }
+
+
+def aggregate(results):
+    ans = [r for r in results if r["type"] in ANSWERABLE_TYPES]
+    una = [r for r in results if r["type"] == "unanswerable"]
+
+    return {
+        "문항 수": len(results),
+        "응답 실패": sum(1 for r in results if r.get("error")),
+        "형식 위반": sum(1 for r in results if not r["format_ok"]),
+        "인용 청크 총계": sum(len(r["cited"]) for r in results),
+        "실존하지 않는 청크ID": sum(len(r["ghost_ids"]) for r in results),
+        "출처 일치 실패": sum(1 for r in ans if not r["source_ok"]),
+        "부당 회피": sum(1 for r in ans if r["evaded"]),
+        "답변가능 분모": len(ans),
+        "환각": sum(1 for r in una if r["hallucinated"]),
+        "규정외 분모": len(una),
+    }
+
+
+def next_run_path():
+    RESULTS_DIR.mkdir(exist_ok=True)
+    existing = sorted(RESULTS_DIR.glob("run_*.json"))
+    nums = []
+    for p in existing:
+        m = re.match(r"run_(\d+)\.json$", p.name)
+        if m:
+            nums.append(int(m.group(1)))
+    n = max(nums) + 1 if nums else 1
+    return RESULTS_DIR / f"run_{n:03d}.json", n, (existing[-1] if existing else None)
+
+
+def print_regressions(results, prev_path):
+    """직전 회차 대비 pass -> fail 로 바뀐 문항. 집계만 보면 안 보이는 것."""
+    if not prev_path:
+        return
+    prev = json.loads(prev_path.read_text(encoding="utf-8"))
+    prev_pass = {r["id"]: r["pass"] for r in prev["items"]}
+    regressed = [r["id"] for r in results
+                 if prev_pass.get(r["id"]) is True and not r["pass"]]
+    fixed = [r["id"] for r in results
+             if prev_pass.get(r["id"]) is False and r["pass"]]
+
+    print(f"\n직전 회차({prev_path.name}) 대비")
+    print(f"  고쳐짐: {len(fixed)}건 {fixed if fixed else ''}")
+    print(f"  깨짐  : {len(regressed)}건 {regressed if regressed else ''}")
+    if regressed:
+        print("  ※ 집계가 좋아졌어도 깨진 문항이 있으면 그 수정은 재검토 대상이다.")
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--model", default=DEFAULT_MODEL)
+    ap.add_argument("--eval-file", default="data/eval_qa.jsonl")
+    ap.add_argument("--limit", type=int, help="앞에서 N문항만")
+    # --limit은 앞에서부터 자르므로 앞쪽에 몰린 normal만 뽑힌다. 유형을 고루
+    # 보려면 --ids로 직접 고른다. (예: 스모크 확인용 10문항 세트)
+    ap.add_argument("--ids", help="쉼표로 구분한 문항 id만 (예: E001,E050,E054)")
+    ap.add_argument("--rpm", type=int, default=DEFAULT_RPM, help="분당 요청 상한")
+    ap.add_argument("--judge", action="store_true", help="정답률까지 채점 (요청 2배)")
+    ap.add_argument("--tag", default="", help="이 회차에서 무엇을 바꿨는지 (기록용)")
+    args = ap.parse_args()
+
+    eval_path = ROOT / args.eval_file
+    if not eval_path.exists():
+        raise SystemExit(f"평가셋이 없습니다: {eval_path}")
+
+    items = [json.loads(l) for l in eval_path.open(encoding="utf-8") if l.strip()]
+    if args.ids:
+        want = [s.strip() for s in args.ids.split(",") if s.strip()]
+        by_id = {it["id"]: it for it in items}
+        unknown = [w for w in want if w not in by_id]
+        if unknown:
+            raise SystemExit(f"평가셋에 없는 id: {unknown}")
+        items = [by_id[w] for w in want]
+    if args.limit:
+        items = items[:args.limit]
+
+    chunk_ids = load_chunk_ids()
+    context = load_context()
+    client = get_client()
+    interval = 60.0 / args.rpm
+    est = len(items) * interval / 60 * (2 if args.judge else 1)
+
+    print(f"모델 {args.model} · {len(items)}문항 · 분당 {args.rpm}요청 (예상 {est:.1f}분)")
+    if args.tag:
+        print(f"태그: {args.tag}")
+    print()
+
+    results = []
+    for i, item in enumerate(items, 1):
+        raw = generate(client, args.model, build_prompt(item["q"], context), SYSTEM_INSTRUCTION)
+        if raw is None:
+            print(f"  {i:>3}/{len(items)} {item['id']} [{item['type']:<12}] -  응답 없음")
+            results.append(blank_result(item))
+            time.sleep(interval)
+            continue
+
+        r = score_item(item, raw, chunk_ids)
+
+        if args.judge and r["type"] in ANSWERABLE_TYPES:
+            time.sleep(interval)
+            verdict = generate(client, args.model, JUDGE_PROMPT.format(
+                question=item["q"], gold=item["gold"], answer=r["body"]))
+            r["judge_pass"] = bool(verdict) and verdict.lstrip().upper().startswith("PASS")
+            r["judge_reason"] = (verdict or "").strip()
+
+        results.append(r)
+
+        detail = ""
+        if not r["pass"]:
+            if r.get("hallucinated"):
+                detail = "환각"
+            elif r.get("evaded"):
+                detail = "부당 회피"
+            elif r["ghost_ids"]:
+                detail = f"없는 청크ID {r['ghost_ids']}"
+            elif r.get("missing_chunks"):
+                detail = f"누락 {r['missing_chunks']}"
+            elif r.get("extra_chunks"):
+                detail = f"과잉 {r['extra_chunks']}"
+        if not r["format_ok"]:
+            detail = (detail + " / 형식 위반").lstrip(" /")
+        print(f"  {i:>3}/{len(items)} {item['id']} [{r['type']:<12}] "
+              f"{'O' if r['pass'] else 'X'}  {detail}")
+
+        if i < len(items):
+            time.sleep(interval)
+
+    # ── 집계 ──────────────────────────────────────────────
+    agg = aggregate(results)
+    print("\n" + "=" * 46)
+    print(f"{'지표':<20}{'실패':>8}{'분모':>8}")
+    print("-" * 46)
+    rows = [
+        ("형식 위반", agg["형식 위반"], agg["문항 수"]),
+        ("없는 청크ID", agg["실존하지 않는 청크ID"], agg["인용 청크 총계"]),
+        ("출처 일치 실패", agg["출처 일치 실패"], agg["답변가능 분모"]),
+        ("부당 회피", agg["부당 회피"], agg["답변가능 분모"]),
+        ("환각", agg["환각"], agg["규정외 분모"]),
+    ]
+    if args.judge:
+        judged = [r for r in results if "judge_pass" in r]
+        agg["정답률 통과"] = sum(1 for r in judged if r["judge_pass"])
+        agg["정답률 분모"] = len(judged)
+        rows.append(("정답률 실패", len(judged) - agg["정답률 통과"], len(judged)))
+    for name, fail, denom in rows:
+        pad = 20 - (len(name) - len(name.encode("ascii", "ignore").decode()))
+        print(f"{name:<{pad}}{fail:>8}{denom:>8}")
+    print("=" * 46)
+
+    if agg["응답 실패"]:
+        print(f"※ 응답을 못 받은 문항 {agg['응답 실패']}건은 전부 실패로 셌다.")
+    by_type = Counter(r["type"] for r in results if not r["pass"])
+    if by_type:
+        print("실패 문항 유형별:", dict(by_type))
+
+    out_path, n, prev_path = next_run_path()
+    out_path.write_text(json.dumps({
+        "run": n,
+        "model": args.model,
+        "eval_file": args.eval_file,
+        "tag": args.tag,
+        "judge": args.judge,
+        "summary": agg,
+        "items": results,
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print_regressions(results, prev_path)
+    print(f"\n저장: {out_path.relative_to(ROOT)}")
+
+
+if __name__ == "__main__":
+    main()
