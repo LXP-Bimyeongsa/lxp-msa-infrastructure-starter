@@ -1,0 +1,30 @@
+[project]
+name = "lxp-ai-tutor"
+version = "0.1.0"
+description = "LXP AI 튜터 — 강의·미션 Q&A. 근거를 찾아 인용하고, 없으면 답하지 않는다"
+readme = "README.md"
+requires-python = ">=3.12"
+
+# 4단계(뼈대)에서 실제로 쓰는 것만 넣는다.
+# LangChain·LangGraph·Chroma 계열은 S1(색인)에서 더한다 — 안 쓰는 의존성이
+# 먼저 들어가면 무엇이 왜 필요한지가 흐려지고, chromadb 빌드까지 기다려야 한다
+dependencies = [
+    "fastapi>=0.128.0",
+    "pydantic-settings>=2.12.0",
+    "python-dotenv>=1.2.1",
+    "uvicorn>=0.40.0",
+]
+
+[dependency-groups]
+dev = ["ruff>=0.14.0"]
+
+# app 을 설치 가능한 패키지로 선언한다.
+# 이것이 없으면 `uv run python scripts/init_vectorstore.py` 처럼 파일 경로로 실행할 때
+# sys.path[0] 이 scripts/ 가 되어 `from app.core.config import ...` 가 깨진다.
+# uvicorn app.main:app 은 작업 디렉터리가 경로에 들어가 우연히 동작할 뿐이다
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]

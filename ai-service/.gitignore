@@ -1,0 +1,25 @@
+# 실제 키가 들어간다. .env.example 만 커밋한다
+.env
+
+# 가상환경 / 캐시
+.venv/
+__pycache__/
+*.py[cod]
+.ruff_cache/
+.pytest_cache/
+.uv-cache/
+
+# 색인과 체크포인터는 산출물이다. 다시 만들 수 있다
+data/chroma/
+*.sqlite
+*.sqlite3
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 로그
+*.log
+logs/
