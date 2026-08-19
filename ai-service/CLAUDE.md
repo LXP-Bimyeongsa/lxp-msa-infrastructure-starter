@@ -10,6 +10,14 @@
 - **`python`이 실행되지 않음(exit 49)**: Windows Store 스텁이 잡힌다
   → 이 프로젝트에서 파이썬은 항상 **`uv run python`**으로 부른다.
 
+## Windows 환경
+
+- **PowerShell에서 `curl`은 `Invoke-WebRequest` 별칭이다.** `curl -i ...`가
+  `missing mandatory parameters: Uri`로 죽는다 — **요청이 나가지도 않았는데 서버 문제로 보인다**
+  → PowerShell에서는 **`curl.exe`**를 쓴다. Git Bash에서는 `curl` 그대로 된다.
+- **서버는 `ai-service/`에서 띄운다.** 저장소 루트에서 `uv run uvicorn`을 하면
+  `Failed to spawn: uvicorn — program not found`가 나는데 디렉터리 문제라는 말이 없다.
+
 ## 로깅
 
 - **한글 로그가 `���� ������`로 깨짐**: Windows 기본 stdout 인코딩이 cp949라 파일·파이프로
