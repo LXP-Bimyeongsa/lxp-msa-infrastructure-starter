@@ -1,5 +1,5 @@
 """
-app/tools/rag.py — 검색 계층
+app/tools/rag.py: 검색 계층
 
 이 파일의 역할: Chroma 에 질의하고 조각을 돌려준다. 제한 조각을 거르는 유일한 자리다.
 → app/graph/nodes.py 의 retrieve 가 부른다
@@ -20,7 +20,7 @@ from app.core.config import (
 )
 
 
-# 1. 저장소 — 요청마다 다시 열지 않는다
+# 1. 저장소: 요청마다 다시 열지 않는다
 @lru_cache(maxsize=1)
 def get_store() -> Chroma:
     return Chroma(
@@ -34,7 +34,7 @@ def is_ready() -> bool:
     return INDEX_MARKER.exists()
 
 
-# 2. 학습자 검색 필터 — 제한 조각을 질의 조건으로 뺀다.
+# 2. 학습자 검색 필터: 제한 조각을 질의 조건으로 뺀다.
 # 가져온 뒤 걸러내지 않는다. 거르는 자리가 여러 곳이면 한 곳만 빠뜨려도 뚫리고,
 # 그때는 미션 정답이 나간 뒤라 되돌릴 수 없다
 def learner_filter(course_id: str | None = None) -> dict:
@@ -44,7 +44,7 @@ def learner_filter(course_id: str | None = None) -> dict:
     return conds[0] if len(conds) == 1 else {"$and": conds}
 
 
-# 3. 검색 — 점수를 함께 돌려준다. 품질 판정(S3)이 점수를 봐야 한다
+# 3. 검색: 점수를 함께 돌려준다. 품질 판정(S3)이 점수를 봐야 한다
 def search(query: str, course_id: str | None = None, k: int = TOP_K) -> list[dict]:
     hits = get_store().similarity_search_with_relevance_scores(
         query, k=k, filter=learner_filter(course_id)

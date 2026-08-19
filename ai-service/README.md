@@ -1,4 +1,4 @@
-# ai-service — LXP AI 튜터
+# LXP AI 튜터 (ai-service)
 
 강의와 미션 질문에 **강의 내용을 근거로 인용해** 답하는 서비스. 근거가 없으면 답하지 않는다.
 
@@ -23,7 +23,7 @@
 전제는 uv 하나다. Python 3.12는 uv가 알아서 받는다.
 
 **모든 명령은 이 폴더(`ai-service/`)에서 돈다.** 저장소 루트에서 돌리면
-`error: Failed to spawn: uvicorn — program not found`가 난다. 디렉터리가 틀렸다는 말이
+`Failed to spawn: uvicorn` / `program not found` 가 난다. 디렉터리가 틀렸다는 말이
 어디에도 없어서 의존성 문제로 착각하기 쉽다.
 
 ```bash
@@ -61,7 +61,7 @@ uv run python scripts/init_vectorstore.py
 포함 수가 같은지**만 보면 된다. 다르면 코드가 아닌데 잘리지 않은 조각이 있다는 뜻이다.
 
 전체 적재는 633조각에 약 7분이 걸린다. **무료 등급의 분당 한도는 요청 수가 아니라
-조각 수로 센다** — 배치 50을 두 번 넣으면 100에서 429가 난다. 요청 수로 오해하면
+조각 수로 센다**. 배치 50을 두 번 넣으면 100에서 429가 난다. 요청 수로 오해하면
 배치만 줄이다가 계속 막힌다. 기본값(배치 25 · `--rpm 90`)이 그 한도를 피하고,
 걸리면 65초씩 늘려가며 같은 배치를 다시 넣는다.
 
@@ -111,7 +111,7 @@ curl.exe -i http://localhost:8086/api/ai/ping
 
 | # | 요청 | 기대 | 다르게 나오면 |
 |---|---|---|---|
-| 1 | `/health` | `200` · 색인 전이면 `index_ready: false` | `index_ready`는 `data/chroma/.complete` 표시를 본다. 디렉터리 존재로 판정하면 **중간에 죽은 반쪽 색인도 준비된 것으로 보인다** — 실제로 429로 50/633에서 끊겼을 때 그랬다 |
+| 1 | `/health` | `200` · 색인 전이면 `index_ready: false` | `index_ready`는 `data/chroma/.complete` 표시를 본다. 디렉터리 존재로 판정하면 **중간에 죽은 반쪽 색인도 준비된 것으로 보인다**. 실제로 429로 50/633에서 끊겼을 때 그랬다 |
 | 2 | `ping` + 헤더 | `200` · `{"message":"pong","member_id":1}` | `member_id`가 보낸 값과 다르면 헤더 전달이 끊긴 것이다 |
 | 3 | `ping` 헤더 없음 | `401` | **가장 중요하다.** `200`이면 신뢰 경계가 아예 없는 것이고, `422`면 `require_member_id`를 안 거치고 `Header(...)`로 직접 받은 코드가 생긴 것이다(AI-03 위반) |
 | 4 | `ping` + `X-Member-Id: abc` | `401` | `500`이면 `int()` 변환 예외를 안 잡은 것이다 |
@@ -127,7 +127,7 @@ uv run ruff check .
 
 | 증상 | 원인 | 조치 |
 |---|---|---|
-| `Failed to spawn: uvicorn — program not found` | 저장소 루트에서 돌렸다 | `cd ai-service` |
+| `Failed to spawn: uvicorn` (program not found) | 저장소 루트에서 돌렸다 | `cd ai-service` |
 | `missing mandatory parameters: Uri` | PowerShell의 `curl` 별칭 | `curl.exe`를 쓴다 |
 | `[Errno 10048] ... bind on address ('127.0.0.1', 8086)` | 8086을 이미 누가 쓰고 있다 | 이전 서버를 끄거나 `--port`를 바꾼다 |
 | 로그가 `���� ������` | Windows stdout이 cp949 | `app/main.py`의 UTF-8 설정 확인 |
@@ -167,7 +167,7 @@ uv run ruff check .
 그대로 재발한다. 다만 4.5단계 판단상 CI는 우선순위 3이라 지금은 미룬다.
 
 결정 기록은 `docs/DECISIONS.md`에 `AI-nn`으로 따로 매긴다. 루트의 `D-nn`과 겹치지 않게
-하려는 것이다 — D-68은 조직 규정 QA 챗봇이 한 번 썼다가 되돌려진 번호라 비어 보일 뿐이다.
+하려는 것이다. D-68은 조직 규정 QA 챗봇이 한 번 썼다가 되돌려진 번호라 비어 보일 뿐이다.
 
 ## 구조
 
@@ -177,11 +177,11 @@ app/
 ├─ api/endpoints.py     # /api/ai/ping
 ├─ core/
 │  ├─ config.py         # 설정, 경로 상수
-│  └─ security.py       # 호출자 신원 — 나중에 교체할 단 하나의 자리
+│  └─ security.py       # 호출자 신원. 나중에 교체할 단 하나의 자리
 └─ schema/models.py     # 요청·응답 모델
 
 data/raw/               # 강의 교안 원본 (S1)
-data/chroma/            # 색인 — 산출물이라 커밋하지 않는다
+data/chroma/            # 색인. 산출물이라 커밋하지 않는다
 scripts/                # init_vectorstore.py (S1)
 ```
 
@@ -218,3 +218,5 @@ scripts/                # init_vectorstore.py (S1)
 
 주석은 네 경우에만 단다. 왜 그렇게 했는지가 코드에 안 보일 때, 안 하면 조용히 깨지는 것,
 값의 근거가 임의일 때, 순서가 중요할 때. 코드를 그대로 읽은 주석은 달지 않는다.
+
+문서와 커밋에는 줄표(U+2014)를 쓰지 않는다. 콜론이나 마침표로 바꾼다.

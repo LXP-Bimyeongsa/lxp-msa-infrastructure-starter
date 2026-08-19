@@ -1,11 +1,11 @@
 """
-app/core/security.py — 호출자 신원을 얻는 단 하나의 자리
+app/core/security.py: 호출자 신원을 얻는 단 하나의 자리
 
 이 파일의 역할: 요청에서 member_id 를 꺼낸다. 지금은 헤더를 그대로 믿는다.
 → app/api/endpoints.py 가 Depends(require_member_id) 로 쓴다
 확인: X-Member-Id 없이 호출하면 401, 숫자로 넣으면 그 값이 돌아온다
 
-주의 — 지금 이 파일은 안전하지 않다.
+주의: 지금 이 파일은 안전하지 않다.
 5기 MSA(lxp-msa-infrastructure-starter)에 붙일 때 서비스 토큰 검증으로 교체한다.
 그때 검증할 것은 셋이다.
   1. 서명 (Keycloak JWKS)          위조 토큰 차단
@@ -21,7 +21,7 @@ app/core/security.py — 호출자 신원을 얻는 단 하나의 자리
 from fastapi import Header, HTTPException
 
 
-# 1. 호출자 식별 — 5기 gateway 의 JwtAuthenticationFilter 가 넣어주는 헤더를 받는다
+# 1. 호출자 식별: 5기 gateway 의 JwtAuthenticationFilter 가 넣어주는 헤더를 받는다
 def require_member_id(
     x_member_id: str | None = Header(None, alias="X-Member-Id"),
 ) -> int:

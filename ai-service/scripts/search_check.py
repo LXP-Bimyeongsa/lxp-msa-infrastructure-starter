@@ -1,5 +1,5 @@
 """
-scripts/search_check.py — 색인이 쓸 만한지 눈으로 본다
+scripts/search_check.py: 색인이 쓸 만한지 눈으로 본다
 
 이 파일의 역할: 질의 하나를 넣어 조각이 돌아오는지, 제한 조각이 새지 않는지 본다.
 → scripts/init_vectorstore.py 가 만든 색인을 읽는다
