@@ -7,11 +7,21 @@
     "hoursPerWeek": 20,
     "level": 1,
     "expect": {
-      "tracks": ["백엔드", "CS기초", "데이터베이스"],
+      "tracks": [
+        "백엔드",
+        "CS기초",
+        "데이터베이스"
+      ],
       "trackRatioMin": 0.7,
-      "mustInclude": ["자바 프로그래밍 입문"],
-      "mustExclude": ["React 시작하기", "Next.js로 만드는 웹 애플리케이션", "프론트엔드 성능 최적화"],
-      "budgetUsageMin": 0.7
+      "mustInclude": [
+        "자바 프로그래밍 입문"
+      ],
+      "mustExclude": [
+        "React 시작하기",
+        "Next.js로 만드는 웹 애플리케이션",
+        "프론트엔드 성능 최적화"
+      ],
+      "fillRateMin": 0.6
     }
   },
   {
@@ -22,11 +32,21 @@
     "hoursPerWeek": 20,
     "level": 1,
     "expect": {
-      "tracks": ["프론트엔드", "CS기초"],
+      "tracks": [
+        "프론트엔드",
+        "CS기초"
+      ],
       "trackRatioMin": 0.7,
-      "mustInclude": ["HTML과 CSS 기초", "자바스크립트 입문"],
-      "mustExclude": ["JPA 성능 튜닝", "스프링 트랜잭션의 이해", "메시지 큐와 비동기 처리"],
-      "budgetUsageMin": 0.7
+      "mustInclude": [
+        "HTML과 CSS 기초",
+        "자바스크립트 입문"
+      ],
+      "mustExclude": [
+        "JPA 성능 튜닝",
+        "스프링 트랜잭션의 이해",
+        "메시지 큐와 비동기 처리"
+      ],
+      "fillRateMin": 0.5
     }
   },
   {
@@ -37,11 +57,19 @@
     "hoursPerWeek": 15,
     "level": 2,
     "expect": {
-      "tracks": ["인프라", "CS기초"],
+      "tracks": [
+        "인프라",
+        "CS기초"
+      ],
       "trackRatioMin": 0.6,
-      "mustInclude": ["Docker 입문"],
-      "mustExclude": ["React 상태 관리", "타입스크립트 입문"],
-      "budgetUsageMin": 0.7
+      "mustInclude": [
+        "Docker 입문"
+      ],
+      "mustExclude": [
+        "React 상태 관리",
+        "타입스크립트 입문"
+      ],
+      "fillRateMin": 0.45
     }
   },
   {
@@ -52,11 +80,16 @@
     "hoursPerWeek": 20,
     "level": 3,
     "expect": {
-      "tracks": ["백엔드"],
+      "tracks": [
+        "백엔드"
+      ],
       "trackRatioMin": 0.8,
-      "mustExclude": ["자바 프로그래밍 입문", "컴퓨터 구조 기초"],
+      "mustExclude": [
+        "자바 프로그래밍 입문",
+        "컴퓨터 구조 기초"
+      ],
       "minLevel": 2,
-      "budgetUsageMin": 0.6
+      "fillRateMin": 0.5
     }
   },
   {
@@ -67,9 +100,12 @@
     "hoursPerWeek": 10,
     "level": 1,
     "expect": {
-      "tracks": ["백엔드", "CS기초"],
+      "tracks": [
+        "백엔드",
+        "CS기초"
+      ],
       "trackRatioMin": 0.5,
-      "budgetUsageMin": 0.3
+      "fillRateMin": 0.8
     }
   },
   {
@@ -80,22 +116,26 @@
     "hoursPerWeek": 15,
     "level": 3,
     "expect": {
-      "tracks": ["데이터베이스"],
+      "tracks": [
+        "데이터베이스"
+      ],
       "trackRatioMin": 0.6,
-      "mustInclude": ["인덱스와 실행 계획"],
+      "mustInclude": [
+        "인덱스와 실행 계획"
+      ],
       "minLevel": 2,
-      "budgetUsageMin": 0.5
+      "fillRateMin": 0.4
     }
   },
   {
     "id": "R-07",
-    "note": "목표가 넓은 경우. 특정 트랙을 강제하지 않고 기본 검증만 본다",
+    "note": "목표가 넓은 경우. 채움은 재지 않는다 — 넓은 목표에서 예산을 다 쓰는 것이 좋은 결과라는 근거가 없다. 무너지지 않고 뭔가는 고르는지만 본다",
     "goal": "개발자가 되고 싶다",
     "weeks": 26,
     "hoursPerWeek": 20,
     "level": 1,
     "expect": {
-      "budgetUsageMin": 0.5
+      "minSelected": 8
     }
   },
   {
