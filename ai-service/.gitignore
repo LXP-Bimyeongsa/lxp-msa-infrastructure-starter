@@ -23,3 +23,7 @@ Thumbs.db
 # 로그
 *.log
 logs/
+
+# 생성물이다. scripts/build_corpus.py 로 다시 만들 수 있고,
+# 원본은 다른 저장소의 학습 자료라 여기 복사본을 커밋하지 않는다
+data/raw/courses/
