@@ -15,6 +15,7 @@ from fastapi import FastAPI
 
 from . import config, logging_setup, regulations
 from .consul import ConsulRegistrar
+from .provider import GeminiProvider
 from .routes import router
 
 log = logging.getLogger(__name__)
@@ -29,9 +30,14 @@ async def lifespan(app: FastAPI):
     log.info("설정 로딩 완료 (모델 %s, 질문 상한 %d자)",
              settings.model, settings.max_question_chars)
 
-    if not settings.gemini_api_key:
-        # 키가 없어도 기동은 시킨다. 헬스와 로그로 원인이 보이는 상태가 낫고,
-        # 규정 적재 같은 나머지 문제를 같이 진단할 수 있다.
+    # 모델 provider. 키가 없어도 기동은 시킨다. 헬스와 로그로 원인이 보이는 상태가
+    # 낫고, 규정 적재 같은 나머지 문제를 같이 진단할 수 있다.
+    if settings.gemini_api_key:
+        app.state.provider = GeminiProvider(
+            settings.gemini_api_key, settings.model, settings.request_timeout_seconds)
+        log.info("모델 provider 준비: %s", settings.model)
+    else:
+        app.state.provider = None
         log.warning("GEMINI_API_KEY가 없다. 질문 요청은 503으로 실패한다.")
 
     # 규정을 메모리에 적재한다. 이게 실패하면 답변을 만들 수 없으므로 ready가 아니다.

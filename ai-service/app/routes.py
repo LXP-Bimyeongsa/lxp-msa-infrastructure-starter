@@ -17,16 +17,21 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, Counter, Histogram, generate_latest
 from pydantic import BaseModel, Field
 
+from .prompt import SYSTEM_INSTRUCTION, build_prompt, split_answer
+from .provider import ProviderError, collect
+
 log = logging.getLogger(__name__)
 router = APIRouter()
 
-# 계획서 16번이 요구하는 최소 지표 중 이 단계에서 낼 수 있는 것들.
-# 429 발생률, 첫 토큰 지연, 조항 검증 실패율, 일일 토큰 누적은 10~13번에서 붙인다.
+# 계획서 16번이 요구하는 최소 지표. 첫 토큰 지연은 13번(SSE)에서 붙인다.
+# outcome 라벨로 429 발생률을 뽑을 수 있다: ai_chat_requests_total{outcome="error_429"}
 REQUESTS = Counter("ai_chat_requests_total", "챗봇 요청 수", ["outcome"])
 LATENCY = Histogram(
     "ai_chat_duration_seconds", "챗봇 요청 처리 시간",
     buckets=(0.1, 0.25, 0.5, 1.0, 1.5, 2.5, 5.0, 10.0, 30.0),
 )
+# 실존하지 않는 청크ID 인용 횟수. 11번 검증 가드의 실패율 지표가 된다.
+GHOST_CITATIONS = Counter("ai_ghost_citations_total", "규정에 없는 청크ID를 인용한 횟수")
 
 
 class ChatRequest(BaseModel):
@@ -99,8 +104,9 @@ def metrics() -> Response:
 
 
 @router.post("/api/ai/chat", response_model=ChatResponse)
-def chat(req: ChatRequest, request: Request) -> ChatResponse:
-    settings = request.app.state.settings
+async def chat(req: ChatRequest, request: Request) -> ChatResponse:
+    state = request.app.state
+    settings = state.settings
 
     # 입력 길이 상한. 프롬프트 인젝션 완화와 토큰 예산 보호를 겸한다.
     # 무료 티어는 하루 500요청이라 긴 입력을 반복하면 그날 할당량이 소진된다.
@@ -112,14 +118,45 @@ def chat(req: ChatRequest, request: Request) -> ChatResponse:
             detail=f"질문이 너무 깁니다. {limit}자 이내로 입력해주세요.",
         )
 
+    regs = getattr(state, "regulations", None)
+    provider = getattr(state, "provider", None)
+    if regs is None or provider is None:
+        # 규정 적재 실패 또는 API 키 없음. 헬스에 원인이 드러나 있다.
+        REQUESTS.labels(outcome="unavailable").inc()
+        raise HTTPException(
+            status_code=503,
+            detail="답변 준비가 되지 않았습니다. 잠시 후 다시 시도해주세요.",
+        )
+
     started = time.perf_counter()
     try:
-        # 10번에서 LLMProvider 호출로 교체한다.
-        answer = (
-            "아직 모델이 연결되지 않았습니다. "
-            f"(질문 {len(req.question)}자를 받았습니다, 모델 {settings.model})"
-        )
-        REQUESTS.labels(outcome="stub").inc()
-        return ChatResponse(answer=answer, warning="모델 미연결 상태의 임시 응답입니다.")
+        # 13번에서 이 자리를 SSE 스트리밍으로 바꾼다. provider 시그니처는 이미
+        # 스트리밍이므로 라우터만 고치면 되고 인터페이스는 그대로다.
+        raw = await collect(provider, SYSTEM_INSTRUCTION,
+                            build_prompt(req.question, regs.context))
+    except ProviderError as e:
+        REQUESTS.labels(outcome=f"error_{e.status}").inc()
+        # 429는 12번에서 재시도와 폴백 문구를 붙인다.
+        detail = ("현재 이용량이 많습니다. 잠시 후 다시 시도해주세요."
+                  if e.status == 429 else "답변을 생성하지 못했습니다.")
+        log.warning("모델 호출 실패 (%s): %s", e.status, e)
+        raise HTTPException(status_code=e.status, detail=detail) from e
     finally:
         LATENCY.observe(time.perf_counter() - started)
+
+    citations, references, body = split_answer(raw)
+
+    # 11번 런타임 검증 가드를 이 자리에 넣는다. 지금은 실존하지 않는 청크ID를
+    # 세기만 하고 재생성하지 않는다. 60문항 실측에서 인용 102건 중 1건이
+    # 존재하지 않는 ID였으므로(E025가 PAY-003-012를 인용, PAY-003은 청크 9개)
+    # 감지는 지금부터 해두고 대응은 11번에서 붙인다.
+    unknown = [c for c in citations + references if c not in regs.chunk_ids]
+    warning = None
+    if unknown:
+        GHOST_CITATIONS.inc(len(unknown))
+        warning = "일부 근거를 규정에서 확인하지 못했습니다. 운영진에게 확인해주세요."
+        log.warning("실존하지 않는 청크ID 인용: %s (질문: %s)", unknown, req.question[:40])
+
+    REQUESTS.labels(outcome="ok").inc()
+    return ChatResponse(answer=body or raw, citations=citations,
+                        references=references, warning=warning)
