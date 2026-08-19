@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 환경변수 / 시크릿
+.env
+*.key
+
+# 생성물 (build_index.py / build_prompt_context.py 산출)
+data/chunks.jsonl
+data/context.txt
+*.index
+*.faiss
+
+# 평가 회차별 결과, 요청/응답 로그
+# 사용자 질문이 그대로 담기므로 공개 저장소에 올리지 않는다.
+eval_results/
+logs/
+*.log
+
+# OS
+.DS_Store

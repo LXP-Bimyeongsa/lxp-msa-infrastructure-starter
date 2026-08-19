@@ -1,0 +1,9 @@
+[project]
+name = "org-qa-chatbot"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "google-genai>=2.18.1",
+    "python-dotenv>=1.2.3",
+    "pyyaml>=6.0.3",
+]
