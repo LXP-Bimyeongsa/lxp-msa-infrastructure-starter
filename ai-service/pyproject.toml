@@ -10,8 +10,12 @@ requires-python = ">=3.12"
 # 먼저 들어가면 무엇이 왜 필요한지가 흐려지고, chromadb 빌드까지 기다려야 한다
 dependencies = [
     "fastapi>=0.128.0",
+    "langchain-chroma>=1.1.0",
+    "langchain-google-genai>=4.3.4",
+    "langchain-text-splitters>=1.1.2",
     "pydantic-settings>=2.12.0",
     "python-dotenv>=1.2.1",
+    "python-frontmatter>=1.3.0",
     "uvicorn>=0.40.0",
 ]
 
