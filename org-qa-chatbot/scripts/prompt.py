@@ -95,7 +95,11 @@ def split_answer(text: str) -> tuple[list[str], list[str], str]:
     basis_raw, _, ref_raw = head.partition(_REF_HEADER)
     basis_raw = basis_raw.strip().rstrip("/").strip()
 
+    # 모델이 `근거:` 줄과 `---` 사이에 빈 줄을 넣는 경우가 흔하다. 다음 줄만 보고
+    # 판단하면 구분선이 본문에 남아 사용자 화면에 `---` 가 그대로 보인다.
     body_start = 1
-    if len(lines) > 1 and lines[1].strip() == _SEPARATOR:
-        body_start = 2
+    while body_start < len(lines) and not lines[body_start].strip():
+        body_start += 1
+    if body_start < len(lines) and lines[body_start].strip() == _SEPARATOR:
+        body_start += 1
     return _parse_ids(basis_raw), _parse_ids(ref_raw), "\n".join(lines[body_start:]).strip()

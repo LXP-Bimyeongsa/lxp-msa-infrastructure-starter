@@ -399,6 +399,13 @@ def rescore(path, tag):
 
 
 def main():
+    # 60문항 + judge는 10분 가까이 걸린다. 파이썬이 파일로 리다이렉트될 때
+    # stdout을 블록 버퍼링해서, 그대로 두면 실행이 끝날 때까지 진행 상황이 안 보인다.
+    try:
+        sys.stdout.reconfigure(line_buffering=True)
+    except AttributeError:
+        pass
+
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default=DEFAULT_MODEL)
     ap.add_argument("--eval-file", default="data/eval_qa.jsonl")
