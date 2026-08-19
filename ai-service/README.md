@@ -38,7 +38,39 @@ uv sync
 uv run uvicorn app.main:app --reload --port 8086
 ```
 
-`.env`는 없어도 뜬다(AI-05). 키는 S1(색인)부터 필요하다.
+`.env`는 없어도 뜬다(AI-05). 색인부터는 `GEMINI_API_KEY`가 있어야 한다.
+
+### 색인 만들기
+
+교안 원본을 만들고, 조각내어 Chroma에 넣는다. 순서가 있다.
+
+```bash
+uv run python scripts/build_corpus.py
+```
+
+```bash
+uv run python scripts/init_vectorstore.py --dry-run
+```
+
+```bash
+uv run python scripts/init_vectorstore.py
+```
+
+`--dry-run`을 먼저 보는 이유. 임베딩은 한도가 있고 되돌릴 수 없다. 분할 결과가
+이상한 채로 적재하면 몇 분을 쓰고 다시 해야 한다. **상한 초과 조각 수와 코드 블록
+포함 수가 같은지**만 보면 된다. 다르면 코드가 아닌데 잘리지 않은 조각이 있다는 뜻이다.
+
+전체 적재는 633조각에 약 7분이 걸린다. **무료 등급의 분당 한도는 요청 수가 아니라
+조각 수로 센다** — 배치 50을 두 번 넣으면 100에서 429가 난다. 요청 수로 오해하면
+배치만 줄이다가 계속 막힌다. 기본값(배치 25 · `--rpm 90`)이 그 한도를 피하고,
+걸리면 65초씩 늘려가며 같은 배치를 다시 넣는다.
+
+```bash
+uv run python scripts/search_check.py "청킹할 때 겹침을 왜 두나요"
+```
+
+색인이 쓸 만한지 본다. 학습자 검색에 제한 조각이 0건이고, 필터를 뗀 대조군에는
+나와야 한다. **대조군에도 0건이면 필터가 잘 도는 게 아니라 막을 것이 없었던 것이다.**
 
 ```bash
 cp .env.example .env
@@ -79,7 +111,7 @@ curl.exe -i http://localhost:8086/api/ai/ping
 
 | # | 요청 | 기대 | 다르게 나오면 |
 |---|---|---|---|
-| 1 | `/health` | `200` · `index_ready: false` | `index_ready: true`인데 S1 전이면 `data/chroma/`가 이미 있다는 뜻이다. 남은 디렉터리를 지운다 |
+| 1 | `/health` | `200` · 색인 전이면 `index_ready: false` | `index_ready`는 `data/chroma/.complete` 표시를 본다. 디렉터리 존재로 판정하면 **중간에 죽은 반쪽 색인도 준비된 것으로 보인다** — 실제로 429로 50/633에서 끊겼을 때 그랬다 |
 | 2 | `ping` + 헤더 | `200` · `{"message":"pong","member_id":1}` | `member_id`가 보낸 값과 다르면 헤더 전달이 끊긴 것이다 |
 | 3 | `ping` 헤더 없음 | `401` | **가장 중요하다.** `200`이면 신뢰 경계가 아예 없는 것이고, `422`면 `require_member_id`를 안 거치고 `Header(...)`로 직접 받은 코드가 생긴 것이다(AI-03 위반) |
 | 4 | `ping` + `X-Member-Id: abc` | `401` | `500`이면 `int()` 변환 예외를 안 잡은 것이다 |

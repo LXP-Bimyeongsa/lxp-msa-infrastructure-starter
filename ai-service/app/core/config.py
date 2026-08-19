@@ -39,6 +39,8 @@ CHUNK_MAX = 1200  # 상한. 코드 블록 하나가 이걸 넘으면 예외로 �
 CHUNK_MIN = 200  # 하한. 미만이면 앞 조각에 병합한다
 CHUNK_OVERLAP = 120  # 겹침. 경계에 걸친 설명이 양쪽 어디에도 안 들어가는 것을 막는다
 
+TOP_K = 5  # 가져올 조각 수. 임의값
+
 
 # 3. 환경 설정
 class Settings(BaseSettings):
