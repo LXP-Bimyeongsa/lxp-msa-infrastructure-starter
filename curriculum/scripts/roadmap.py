@@ -50,11 +50,14 @@ def load_catalog():
         return json.load(f)
 
 
-def build_prompt(courses, goal, budget_hours, weeks, hours_per_week, level):
+def build_prompt(courses, goal, budget_hours, weeks, hours_per_week, level,
+                 feedback=None):
     """강의 목록을 통째로 넣는다.
 
     필드를 전부 넣지 않고 제목·시간·난이도·트랙·태그만 넣는다. description 은 빼도
     순서를 짜는 데 지장이 없고 토큰만 늘린다.
+
+    feedback 이 있으면 직전 시도의 문제를 뒤에 붙인다. 재생성용이다.
     """
     level_label = LEVEL_LABEL[level]
     lines = [
@@ -63,6 +66,7 @@ def build_prompt(courses, goal, budget_hours, weeks, hours_per_week, level):
         for i, c in enumerate(courses)
     ]
     catalog_block = "\n".join(lines)
+    tail = f"\n\n{feedback}" if feedback else ""
 
     return f"""너는 학습 경로를 설계한다.
 
@@ -116,8 +120,65 @@ def build_prompt(courses, goal, budget_hours, weeks, hours_per_week, level):
   "selected": [
     {{"index": 0, "reason": "이 자리에 둔 이유"}}
   ]
-}}
+}}{tail}
 """
+
+
+def build_feedback(valid, total, problems, budget_hours):
+    """직전 시도의 문제를 다음 프롬프트에 붙일 형태로 만든다.
+
+    검증이 잡은 것을 그대로 돌려준다. 산술 제약은 프롬프트로 보장되지 않아서
+    (40시간 예산에 65시간을 고른다) 검증에서 잡아 다시 부르는 편이 확실하다.
+    """
+    picked = ", ".join(f"{c['title']}({c['estimatedHours']}h)" for c in valid) or "없음"
+    lines = [
+        "[직전 시도의 문제]",
+        "아래처럼 짰는데 문제가 있었다. 고쳐서 다시 짜라.",
+        "",
+        f"직전 선택: {picked}",
+        f"합계 {total}h / 예산 {budget_hours}h",
+        "",
+        "문제:",
+    ]
+    lines += [f"  - {p}" for p in problems]
+    lines.append("")
+    if total > budget_hours:
+        lines.append(
+            f"{total - budget_hours}시간을 줄여야 한다. 목표에서 먼 강의부터 뺀다. "
+            "강의 하나만 남아도 괜찮다."
+        )
+    lines.append("목표 적합성은 유지한다. 관계없는 강의로 바꿔치지 않는다.")
+    return "\n".join(lines)
+
+
+def generate(courses, goal, budget_hours, weeks, hours_per_week, level,
+             model, api_key, max_attempts=3, on_retry=None):
+    """검증이 통과할 때까지 재생성한다.
+
+    반환: (result, selected, valid, total, problems, attempts, tokens)
+    attempts 는 실제로 부른 횟수다. 1 이면 첫 시도에 통과했다는 뜻이고,
+    이 값이 프롬프트 품질 지표가 된다.
+    """
+    feedback = None
+    tok_in = tok_out = 0
+
+    for attempt in range(1, max_attempts + 1):
+        prompt = build_prompt(courses, goal, budget_hours, weeks,
+                              hours_per_week, level, feedback)
+        result, usage = call_gemini(prompt, model, api_key)
+        tok_in += usage.get("promptTokenCount", 0)
+        tok_out += usage.get("candidatesTokenCount", 0)
+
+        selected = result.get("selected", [])
+        valid, total, problems = verify(courses, selected, budget_hours)
+
+        if not problems or attempt == max_attempts:
+            tokens = {"promptTokenCount": tok_in, "candidatesTokenCount": tok_out}
+            return result, selected, valid, total, problems, attempt, tokens
+
+        if on_retry:
+            on_retry(attempt, problems)
+        feedback = build_feedback(valid, total, problems, budget_hours)
 
 
 def call_gemini(prompt, model, api_key, max_attempts=4):
@@ -239,6 +300,8 @@ def main():
     p.add_argument("--level", type=int, default=1, choices=[1, 2, 3, 4, 5],
                    help="현재 수준. 1 완전입문 · 2 기초 · 3 중급 · 4 중상급 · 5 고급")
     p.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"))
+    p.add_argument("--max-attempts", type=int, default=3,
+                   help="검증 실패 시 재생성 포함 최대 호출 횟수")
     p.add_argument("--show-prompt", action="store_true", help="보낸 프롬프트를 함께 출력")
     args = p.parse_args()
 
@@ -249,22 +312,24 @@ def main():
 
     courses = load_catalog()
     budget = args.weeks * args.hours_per_week
-    prompt = build_prompt(courses, args.goal, budget, args.weeks,
-                          args.hours_per_week, args.level)
 
     if args.show_prompt:
-        print(prompt)
+        print(build_prompt(courses, args.goal, budget, args.weeks,
+                           args.hours_per_week, args.level))
         print("=" * 70)
 
-    print(f"카탈로그 {len(courses)}개 / 프롬프트 {len(prompt):,}자 / 모델 {args.model}")
+    print(f"카탈로그 {len(courses)}개 / 모델 {args.model}")
     print(f"목표: {args.goal}")
     print(f"예산: {args.weeks}주 × {args.hours_per_week}h = {budget}h · 수준 L{args.level} ({LEVEL_LABEL[args.level]})")
     print("=" * 70)
 
-    result, usage = call_gemini(prompt, args.model, api_key)
-    selected = result.get("selected", [])
+    def on_retry(attempt, problems):
+        print(f"[재생성 {attempt}] " + " · ".join(problems), file=sys.stderr)
 
-    valid, total, problems = verify(courses, selected, budget)
+    result, selected, valid, total, problems, attempts, usage = generate(
+        courses, args.goal, budget, args.weeks, args.hours_per_week,
+        args.level, args.model, api_key, args.max_attempts, on_retry,
+    )
 
     # valid 와 같은 조건으로 걸러서 순서를 맞춘다.
     reasons = [s.get("reason", "") for s in selected
@@ -285,7 +350,7 @@ def main():
     print("=" * 70)
     print(f"선택 {len(valid)}개 · 총 {total}h / 예산 {budget}h · "
           f"{len(weeks)}주 / 예산 {args.weeks}주")
-    print(f"토큰: 입력 {usage.get('promptTokenCount', '?')} / "
+    print(f"호출 {attempts}회 · 토큰 입력 {usage.get('promptTokenCount', '?')} / "
           f"출력 {usage.get('candidatesTokenCount', '?')}")
 
     if problems:
