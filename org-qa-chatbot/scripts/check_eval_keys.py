@@ -14,15 +14,14 @@ docs/를 고칠 때마다 이 스크립트를 돌려서 그 사고를 잡는다.
 import json
 import sys
 from collections import Counter
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_index import chunk_document  # noqa: E402  (같은 청킹 로직을 그대로 재사용)
+from _shared import DATA_DIR, DOCS_DIR, ROOT
 
-ROOT = Path(__file__).resolve().parent.parent
-DOCS_DIR = ROOT / "docs"
-EVAL_PATH = ROOT / "data" / "eval_qa.jsonl"
-CHUNKS_PATH = ROOT / "data" / "chunks.jsonl"
+# 서비스가 쓰는 청킹 로직 그대로. 평가와 운영의 chunk_id가 어긋나면 안 된다.
+from app.regulations import chunk_document  # noqa: E402
+
+EVAL_PATH = DATA_DIR / "eval_qa.jsonl"
+CHUNKS_PATH = DATA_DIR / "chunks.jsonl"
 
 REQUIRED_FIELDS = ("id", "q", "category", "type", "answer_doc", "answer_chunks", "gold")
 VALID_TYPES = {"normal", "multi_hop", "conflict", "unanswerable"}

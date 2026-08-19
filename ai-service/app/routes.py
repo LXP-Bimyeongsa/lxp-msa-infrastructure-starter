@@ -60,6 +60,17 @@ def health(request: Request, response: Response) -> dict:
     ready = getattr(request.app.state, "ready", False)
     registrar = getattr(request.app.state, "registrar", None)
     registered = bool(registrar and registrar.registered)
+    regs = getattr(request.app.state, "regulations", None)
+
+    reg_component: dict[str, object] = {"status": "UP" if regs else "DOWN"}
+    if regs:
+        reg_component["details"] = {
+            "documents": regs.doc_count,
+            "chunks": len(regs.chunks),
+            # 회차 형상 기록의 context_sha와 같은 값이다. 운영에서 품질 이상이
+            # 보고될 때 어느 규정 스냅샷이었는지 평가 회차와 대조할 수 있다.
+            "contextSha": regs.context_sha,
+        }
 
     consul: dict[str, object] = {"status": "UP" if registered else "DOWN"}
     if registrar:
@@ -76,7 +87,7 @@ def health(request: Request, response: Response) -> dict:
     return {
         "status": "UP" if up else "OUT_OF_SERVICE",
         "components": {
-            "regulations": {"status": "UP" if ready else "DOWN"},
+            "regulations": reg_component,
             "consul": consul,
         },
     }

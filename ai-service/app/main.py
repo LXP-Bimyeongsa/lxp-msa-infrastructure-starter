@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from . import config, logging_setup
+from . import config, logging_setup, regulations
 from .consul import ConsulRegistrar
 from .routes import router
 
@@ -30,12 +30,24 @@ async def lifespan(app: FastAPI):
              settings.model, settings.max_question_chars)
 
     if not settings.gemini_api_key:
-        # 9번 단계에서는 모델을 호출하지 않으므로 기동을 막지 않는다.
-        # 10번에서 provider를 붙일 때는 여기서 막아야 한다.
-        log.warning("GEMINI_API_KEY가 없다. 모델 호출 단계에서 실패한다.")
+        # 키가 없어도 기동은 시킨다. 헬스와 로그로 원인이 보이는 상태가 낫고,
+        # 규정 적재 같은 나머지 문제를 같이 진단할 수 있다.
+        log.warning("GEMINI_API_KEY가 없다. 질문 요청은 503으로 실패한다.")
 
-    # 규정 적재는 14번에서 붙인다. 지금은 준비 완료로 둔다.
-    app.state.ready = True
+    # 규정을 메모리에 적재한다. 이게 실패하면 답변을 만들 수 없으므로 ready가 아니다.
+    # 14번에서 여기에 재로드를 붙인다(내용 해시 비교 + 원자적 스왑).
+    try:
+        app.state.regulations = regulations.load(settings.docs_dir)
+        regs = app.state.regulations
+        log.info("규정 적재 완료: 문서 %d개 / 청크 %d개 / sha %s",
+                 regs.doc_count, len(regs.chunks), regs.context_sha)
+        app.state.ready = True
+    except Exception as e:
+        # 문서 마운트가 빠졌거나 경로가 틀린 경우다. 헬스에 DOWN으로 드러난다.
+        app.state.regulations = None
+        app.state.ready = False
+        log.error("규정 적재 실패 (%s) — 질문 요청은 503으로 실패한다: %s",
+                  settings.docs_dir, e)
 
     registrar = ConsulRegistrar(
         settings.consul_host, settings.consul_port, config.APP_NAME, config.PORT)
