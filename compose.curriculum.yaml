@@ -29,6 +29,11 @@ services:
       # 검증 실패 시 재생성 포함 최대 호출 횟수.
       # 늘리면 통과율이 오르고 쿼터를 더 먹는다. 무료 한도가 하루 20건이다.
       ROADMAP_MAX_ATTEMPTS: ${ROADMAP_MAX_ATTEMPTS:-3}
+      # 트레이스. 키가 없으면 꺼진 채로 그냥 돈다. 노드별로 찍히므로
+      # 재생성이 왜 일어났는지가 남는다.
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-lxp-curriculum}
     ports:
       # 8080 gateway / 8082 member / 8083 course / 8084 subscription
       # 8085 payment / 8086 여기
