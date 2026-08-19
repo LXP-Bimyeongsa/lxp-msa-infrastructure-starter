@@ -15,9 +15,11 @@
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import time
 from collections import Counter
@@ -142,6 +144,37 @@ def generate(client, model, contents, system_instruction=None):
     return None
 
 
+def sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:12]
+
+
+def git_sha():
+    try:
+        out = subprocess.run(["git", "rev-parse", "--short", "HEAD"], cwd=ROOT,
+                             capture_output=True, text=True, timeout=5)
+        return out.stdout.strip() or None
+    except Exception:
+        return None
+
+
+def provenance(model, context):
+    """이 회차가 '무엇으로' 만들어졌는지. 없으면 지표를 나중에 해석할 수 없다.
+
+    tag는 사람이 손으로 쓰는 메모라 신뢰할 수 없다. 프롬프트 해시가 있으면 회차
+    비교에서 "프롬프트가 같으므로 이 차이는 노이즈"를 자동으로 판정할 수 있다.
+    temperature=0도 완전 결정적이지 않아서 이 구분이 실제로 필요하다.
+    """
+    return {
+        "model": model,
+        "temperature": 0,
+        "thinking_budget": THINKING_BUDGET,
+        "prompt_sha": sha(SYSTEM_INSTRUCTION),
+        "context_sha": sha(context),
+        "git_sha": git_sha(),
+        "system_instruction": SYSTEM_INSTRUCTION,
+    }
+
+
 def load_chunk_ids():
     if not CHUNKS_PATH.exists():
         raise SystemExit("chunks.jsonl이 없습니다. build_index.py를 먼저 실행하세요.")
@@ -261,7 +294,7 @@ def next_run_path():
     return RESULTS_DIR / f"run_{n:03d}.json", n, (existing[-1] if existing else None)
 
 
-def print_regressions(results, prev_path):
+def print_regressions(results, prev_path, prov=None):
     """직전 회차 대비 pass -> fail 로 바뀐 문항. 집계만 보면 안 보이는 것."""
     if not prev_path:
         return
@@ -277,6 +310,13 @@ def print_regressions(results, prev_path):
     print(f"  깨짐  : {len(regressed)}건 {regressed if regressed else ''}")
     if regressed:
         print("  ※ 집계가 좋아졌어도 깨진 문항이 있으면 그 수정은 재검토 대상이다.")
+
+    # 프롬프트가 그대로인데 판정이 바뀌었다면 모델 비결정성이다. 개선/악화로 읽으면 안 된다.
+    prev_prov = prev.get("provenance") or {}
+    if prov and prev_prov.get("prompt_sha") == prov["prompt_sha"] and (fixed or regressed):
+        print("  ※ 프롬프트 해시가 직전 회차와 같다. 위 변화는 모델 비결정성으로 봐야 한다.")
+    if prev_prov.get("context_sha") and prev_prov["context_sha"] != (prov or {}).get("context_sha"):
+        print("  ※ 규정 전문이 바뀌었다(context_sha 불일치). 프롬프트 효과와 섞여 있다.")
 
 
 def report(results, agg, judge=False):
@@ -332,6 +372,11 @@ def rescore(path, tag):
                for r in results if old_pass.get(r["id"]) != r["pass"]]
 
     print(f"재채점: {path.name} (모델 {prev['model']}, {len(results)}문항) — API 호출 없음")
+    old_prov = prev.get("provenance") or {}
+    if old_prov:
+        print(f"원본 프롬프트 {old_prov.get('prompt_sha', '-')}"
+              f" · 규정 {old_prov.get('context_sha', '-')}"
+              f" · git {old_prov.get('git_sha') or '-'}")
     if tag:
         print(f"태그: {tag}")
     agg = aggregate(results)
@@ -345,6 +390,9 @@ def rescore(path, tag):
     out_path.write_text(json.dumps({
         "run": n, "model": prev["model"], "eval_file": prev["eval_file"],
         "tag": tag or f"rescore of {path.name}", "judge": prev.get("judge", False),
+        # 응답은 원본 회차의 것이므로 생성 조건도 원본을 그대로 물려준다.
+        # 재채점으로 바뀐 것은 채점 기준(현재 코드)뿐이다.
+        "provenance": old_prov, "scored_by_git_sha": git_sha(),
         "rescored_from": path.name, "summary": agg, "items": results,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"\n저장: {out_path.relative_to(ROOT)}")
@@ -391,7 +439,10 @@ def main():
     interval = 60.0 / args.rpm
     est = len(items) * interval / 60 * (2 if args.judge else 1)
 
+    prov = provenance(args.model, context)
     print(f"모델 {args.model} · {len(items)}문항 · 분당 {args.rpm}요청 (예상 {est:.1f}분)")
+    print(f"프롬프트 {prov['prompt_sha']} · 규정 {prov['context_sha']}"
+          f" · git {prov['git_sha'] or '-'} · thinking {prov['thinking_budget']}")
     if args.tag:
         print(f"태그: {args.tag}")
     print()
@@ -459,11 +510,12 @@ def main():
         "eval_file": args.eval_file,
         "tag": args.tag,
         "judge": args.judge,
+        "provenance": prov,
         "summary": agg,
         "items": results,
     }, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print_regressions(results, prev_path)
+    print_regressions(results, prev_path, prov)
     print(f"\n저장: {out_path.relative_to(ROOT)}")
 
 
