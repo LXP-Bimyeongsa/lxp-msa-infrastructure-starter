@@ -25,6 +25,10 @@ DATA_DIR = BASE_DIR / "data"
 RAW_DIR = DATA_DIR / "raw"  # 강의 교안 원본 마크다운
 CHROMA_DIR = DATA_DIR / "chroma"  # 색인. S1 에서 생성된다
 
+# 색인이 끝까지 갔다는 표시. 디렉터리 존재만 보면 중간에 죽은 반쪽 색인도
+# 준비된 것으로 보인다 — 실제로 429 로 50/633 에서 끊겼을 때 그렇게 보였다
+INDEX_MARKER = CHROMA_DIR / ".complete"
+
 # 강의별로 컬렉션을 나누지 않는다. 강의가 늘 때마다 컬렉션이 늘면 관리가 안 되고,
 # course_id 메타 필터로 같은 효과가 나온다 (2단계 문서 3.1)
 COLLECTION_NAME = "lxp_knowledge"

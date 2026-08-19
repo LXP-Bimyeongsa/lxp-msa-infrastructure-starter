@@ -17,6 +17,7 @@ import hashlib
 import re
 import shutil
 import sys
+import time
 from pathlib import Path
 
 import frontmatter
@@ -32,6 +33,7 @@ from app.core.config import (
     CHUNK_OVERLAP,
     CHUNK_TARGET,
     COLLECTION_NAME,
+    INDEX_MARKER,
     RAW_DIR,
     get_embeddings,
 )
@@ -201,11 +203,29 @@ def report(texts: list[str], metas: list[dict]) -> None:
         print("  ← 코드 블록이 아닌데 상한을 넘은 조각이 있다. 분할 규칙을 본다")
 
 
+# 4. 적재 — 한도에 걸리면 기다렸다 같은 배치를 다시 넣는다.
+# 여기서 포기하면 앞서 넣은 것만 남아 반쪽 색인이 된다
+def add_with_retry(store, texts, metas, ids, tries: int = 5) -> None:
+    for attempt in range(tries):
+        try:
+            store.add_texts(texts, metadatas=metas, ids=ids)
+            return
+        except Exception as e:
+            if "RESOURCE_EXHAUSTED" not in str(e) or attempt == tries - 1:
+                raise
+            wait = 65 * (attempt + 1)
+            print(f"  한도 초과. {wait}초 기다린다 ({attempt + 1}/{tries - 1})", flush=True)
+            time.sleep(wait)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="임베딩 없이 분할 결과만 본다")
     ap.add_argument("--limit", type=int, default=0, help="처리할 파일 수 상한")
-    ap.add_argument("--batch", type=int, default=50)
+    ap.add_argument("--batch", type=int, default=25)
+    # 무료 등급은 분당 한도를 조각 수로 센다. 배치 50 두 번에 100 을 채우고 429 가 났다.
+    # 요청 수가 아니라 조각 수라는 걸 모르면 배치만 줄이다가 계속 막힌다
+    ap.add_argument("--rpm", type=int, default=90, help="분당 임베딩할 조각 수 상한")
     args = ap.parse_args()
 
     files = sorted(COURSES_DIR.rglob("*.md"))
@@ -228,7 +248,9 @@ def main() -> None:
         print("dry-run 이라 적재하지 않는다")
         return
 
-    # REBUILD 만 지원한다. 바뀐 것만 처리하는 UPSERT 는 나중 작업이다
+    # REBUILD 만 지원하므로 통째로 지우고 다시 만든다.
+    # 표시를 먼저 지워야, 다시 만드는 도중에 뜬 서버가 준비됐다고 하지 않는다
+    INDEX_MARKER.unlink(missing_ok=True)
     if CHROMA_DIR.exists():
         shutil.rmtree(CHROMA_DIR)
 
@@ -238,12 +260,18 @@ def main() -> None:
         persist_directory=str(CHROMA_DIR),
         collection_metadata={"hnsw:space": "cosine"},
     )
+    pause = 60.0 * args.batch / args.rpm
     for start in range(0, len(texts), args.batch):
-        end = start + args.batch
-        store.add_texts(texts[start:end], metadatas=metas[start:end], ids=ids[start:end])
-        print(f"  적재 {min(end, len(texts))}/{len(texts)}")
+        end = min(start + args.batch, len(texts))
+        add_with_retry(store, texts[start:end], metas[start:end], ids[start:end])
+        print(f"  적재 {end}/{len(texts)}", flush=True)
+        if end < len(texts):
+            time.sleep(pause)
 
-    print(f"완료    : {CHROMA_DIR}")
+    # 마지막에 표시를 남긴다. 중간에 죽으면 표시가 없어서 /health 가 준비됐다고
+    # 하지 않는다. 순서를 바꾸면 반쪽 색인이 준비된 것으로 보인다
+    INDEX_MARKER.write_text(f"{len(texts)}", encoding="utf-8")
+    print(f"완료    : {CHROMA_DIR} · 조각 {len(texts)}")
 
 
 if __name__ == "__main__":

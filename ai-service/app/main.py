@@ -17,7 +17,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.api.endpoints import router as tutor_router
-from app.core.config import CHROMA_DIR, settings
+from app.core.config import INDEX_MARKER, settings
 from app.schema.models import HealthResponse
 
 # Windows 기본 stdout 인코딩은 cp949 다. 로그가 파일이나 파이프로 나가는 순간
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # 서버가 뜨는 것과 색인이 준비되는 것을 분리해야, 이후 문제가 어느 쪽인지 구분된다
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not CHROMA_DIR.exists():
+    if not INDEX_MARKER.exists():
         logger.warning(
             "벡터 색인이 없다. S1 에서 scripts/init_vectorstore.py 를 돌린다"
         )
@@ -62,5 +62,5 @@ def health() -> HealthResponse:
     return HealthResponse(
         status="healthy",
         project=settings.PROJECT_NAME,
-        index_ready=CHROMA_DIR.exists(),
+        index_ready=INDEX_MARKER.exists(),
     )
