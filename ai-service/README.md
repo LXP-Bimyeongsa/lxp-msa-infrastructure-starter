@@ -69,6 +69,12 @@ uv run python scripts/init_vectorstore.py
 uv run python scripts/search_check.py "청킹할 때 겹침을 왜 두나요"
 ```
 
+그래프를 통째로 돌려보려면 이쪽이다.
+
+```bash
+uv run python scripts/ask.py "청킹할 때 겹침을 왜 두나요" --course c-04
+```
+
 색인이 쓸 만한지 본다. 학습자 검색에 제한 조각이 0건이고, 필터를 뗀 대조군에는
 나와야 한다. **대조군에도 0건이면 필터가 잘 도는 게 아니라 막을 것이 없었던 것이다.**
 
@@ -194,9 +200,9 @@ scripts/                # init_vectorstore.py (S1)
 
 | 슬라이스 | 만들 것 | 볼 것 |
 |---|---|---|
-| **S1 색인** | 마크다운 로딩 → 청킹 → `visibility` 메타 → Chroma | 없음 (04장에서 배움) |
-| S2 최소 그래프 | `TutorState` + `retrieve` → `generate` 직선 | 09장 `01_graph_vs_chain`, `02_state_schema` |
-| S3 분기 | `grade` + 세 갈래 + `no_evidence` | 09장 `04_conditional_edges` |
+| ~~S1 색인~~ | 완료. 조각 633개 | |
+| ~~S2 최소 그래프~~ | 완료. `TutorState` + `retrieve` → `generate` 직선 | |
+| **S3 분기** | `grade` + 세 갈래 + `no_evidence` | 09장 `04_conditional_edges` |
 | S4 루프 | `rewrite` → `retrieve` 순환 + `retry` 상한 | 09장 `03_nodes_and_edges` |
 | S5 의도·힌트 | `classify` + `route_intent` + `hint` + `visibility` 필터 | 02장 구조화 출력 |
 | S6 가드레일 | 출력 유출 검사 | 없음 |
