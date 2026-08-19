@@ -32,3 +32,18 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
+
+# ruff 기본 규칙 집합은 버전마다 바뀐다. 0.16.3 에서 `ruff check .` 는 통과하지만
+# 같은 기본값을 명시(E4,E7,E9,F)하면 E402 가 3건 잡힌다 — 즉 고정하지 않으면
+# uv 가 ruff 를 올리는 날 CI 가 조용히 다른 것을 검사한다
+[tool.ruff]
+line-length = 120  # 현재 최장 줄(한글 주석 포함)이 들어가는 값. 100 이면 기존 2줄이 걸린다
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "E501", "I", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+# scripts/ 는 sys.stdout.reconfigure(encoding="utf-8") 를 app 임포트보다 먼저 부른다.
+# 순서를 바꾸면 Windows 에서 한글 로그가 조용히 깨진다(CLAUDE.md 로깅 항목)
+"scripts/*.py" = ["E402"]
