@@ -1,3 +1,9 @@
 fastapi==0.115.6
 uvicorn[standard]==0.34.0
 pydantic==2.10.4
+
+# 생성 -> 검증 -> 재생성 사이클을 그래프로 묶는다 (roadmap/engine.py).
+# CLI(scripts/)와 평가 러너도 같은 패키지를 쓰므로 이 목록이 필요하다.
+langgraph==1.2.11
+# 트레이스. LANGSMITH_TRACING=true 와 LANGSMITH_API_KEY 가 있을 때만 켜진다.
+langsmith==0.11.0
