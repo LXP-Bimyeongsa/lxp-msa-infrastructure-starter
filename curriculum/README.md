@@ -6,9 +6,22 @@
 
 ```
 curriculum/
+  roadmap/              코어 패키지. CLI·평가·서비스가 전부 이걸 쓴다
+    catalog.py          강의 로드          <- course-service API 로 바꿀 때 여기
+    prompt.py           프롬프트 조립
+    verify.py           코드 검증 4가지
+    schedule.py         주차 배분
+    llm.py              모델 호출          <- 모델을 바꿀 때 여기
+    engine.py           생성 -> 검증 -> 재생성 루프
+  service/              FastAPI. HTTP 경계만 담당한다
+    app.py
+    Dockerfile
+    requirements.txt
+  scripts/              CLI 와 평가 러너
   data/courses.json     강의 카탈로그 43개
-  scripts/seed.sh       MongoDB course_db 에 적재
 ```
+
+`scripts/` 와 `README.md` 는 이미지에 넣지 않는다. 런타임에 필요 없다.
 
 ## 강의 카탈로그
 
@@ -329,6 +342,46 @@ R-08  통과    0개 ·   0h/240h ·             채움   0%
 
 모델 `gemini-3.5-flash-lite`. 트랙 비율이 6건 중 5건에서 100% 다. 프롬프트 수정
 전에는 38~75% 였다.
+
+## 서비스
+
+```bash
+docker compose -f compose.curriculum.yaml up -d --build
+```
+
+`compose.yaml` 이 먼저 떠 있어야 한다. 네트워크(`lxp-net`)를 새로 만들지 않고 붙는다.
+API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은 되고
+로드맵 호출에서 503 이 난다.
+
+| | |
+|---|---|
+| `GET /actuator/health` | compose healthcheck 와 Prometheus 스크레이프 |
+| `GET /api/ai/curriculum/catalog` | 고를 수 있는 강의 목록 |
+| `POST /api/ai/curriculum/roadmap` | 로드맵 생성 |
+
+```bash
+curl -s localhost:8086/api/ai/curriculum/roadmap \
+  -H 'Content-Type: application/json' \
+  -d '{"goal":"백엔드 개발자가 되고 싶다","weeks":8,"hoursPerWeek":15,"level":1}'
+```
+
+### 별도 compose 파일인 이유
+
+`compose.yaml` 은 인프라와 도메인 서비스 자리다. AI 기능은 아직 붙였다 뗐다 하는
+단계라 평소 개발에서까지 떠 있을 이유가 없다. `compose.demo.yaml` 과 같은 판단이고
+D-14 의 용도별 분리를 따른다.
+
+### 지금 안 하는 것
+
+Consul 에 등록하지 않는다. 파이썬이라 Spring Cloud Consul 이 없고, gateway 라우팅
+전이라 포트로 직접 부른다. DB 도 쓰지 않는다. 강의 목록은 이미지 안 JSON 을
+기동할 때 한 번 읽는다. `course-service` 목록 API 로 바꾸면 그때 `depends_on` 이 생긴다.
+
+### 상태 코드
+
+429 는 그대로 429 로 내려보낸다. 무료 티어 하루 20건 한도라 서버 잘못이 아니라
+잠시 뒤 다시 부르면 되는 것이다. 화면에서 재시도를 안내할 수 있어야 해서
+502 로 뭉개지 않았다. 나머지 모델 오류는 502 다.
 
 ## 결정 기록을 여기 두는 이유
 
