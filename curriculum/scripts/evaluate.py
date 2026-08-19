@@ -5,8 +5,8 @@ eval_roadmap.json 의 케이스를 전부 돌려 채점한다. 프롬프트를 �
 나아졌는지 숫자로 확인하려고 만들었다. 감으로 고치면 뭐가 좋아졌는지 모른다.
 
 채점은 두 층이다.
-    공통  roadmap.verify() 가 보는 4가지 (번호 범위 · 중복 · 기간 · 난이도 역전)
-    개별  케이스마다 적어둔 기대 (트랙 비율 · 필수 · 금지 · 수준 · 예산 활용)
+    공통  verify.check() 4가지 (번호 범위 · 중복 · 기간 · 트랙 내 난이도 역전)
+    개별  케이스마다 적어둔 기대
 
 전부 코드로 잰다. 사람이 읽고 판단하는 항목은 넣지 않았다. 자동으로 안 돌면
 프롬프트를 고칠 때마다 쓰지 않게 되고, 그러면 있으나 마나다.
@@ -14,10 +14,10 @@ eval_roadmap.json 의 케이스를 전부 돌려 채점한다. 프롬프트를 �
 사용법
     export GEMINI_API_KEY=...
     python curriculum/scripts/evaluate.py
-    python curriculum/scripts/evaluate.py --case R-04      한 건만
-    python curriculum/scripts/evaluate.py --verbose        실패 상세
+    python curriculum/scripts/evaluate.py --case R-04 --verbose
+    python curriculum/scripts/evaluate.py --max-attempts 1   루프 없이 프롬프트만
 
-케이스 수만큼 API 를 호출한다. 무료 티어 RPM 을 넘지 않게 사이에 쉰다.
+케이스 수만큼 API 를 호출한다. 무료 티어 한도가 하루 20건이라 금방 닿는다.
 """
 
 import argparse
@@ -26,8 +26,8 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import roadmap  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+from curriculum import roadmap  # noqa: E402
 
 EVAL = Path(__file__).resolve().parent.parent / "data" / "eval_roadmap.json"
 
@@ -37,42 +37,29 @@ def load_cases():
         return json.load(f)
 
 
-def available_hours(courses, case):
-    """기대 트랙에서 수준 조건을 만족하는 강의의 총 시간.
-
-    예산 대비로 채움 정도를 재면 안 된다. 카탈로그가 그 트랙에 그만큼 없으면
-    예산을 채우라는 요구가 곧 관계없는 강의를 넣으라는 요구가 된다.
-    실제로 R-06 은 예산 120시간인데 가용이 62시간뿐이었다.
-    """
-    exp = case.get("expect", {})
-    tracks = exp.get("tracks")
-    if not tracks:
-        return None
-    floor = max(exp.get("minLevel", 1), case["level"] - 1)
-    return sum(c["estimatedHours"] for c in courses
-               if c["track"] in tracks and c["level"] >= floor)
-
-
-def score(case, valid, total, problems, budget, avail=None):
+def score(case, result, courses):
     """케이스별 기대를 채점한다. 반환은 (실패 사유 목록, 지표)."""
     exp = case.get("expect", {})
-    fails = list(problems)
+    fails = list(result.problems)
+    valid = [c for c, _ in result.courses]
     titles = {c["title"] for c in valid}
 
-    # 채울 수 있는 상한은 예산과 가용 중 작은 쪽이다.
-    ceiling = min(budget, avail) if avail else budget
-    usage = total / ceiling if ceiling else 0
-    tracks = exp.get("tracks")
+    # 채울 수 있는 상한은 예산과 가용 중 작은 쪽이다. 예산 대비로 재면
+    # 카탈로그에 없는 만큼을 관계없는 강의로 채우라는 요구가 된다.
+    floor_level = max(exp.get("minLevel", 1), case["level"] - 1)
+    avail = roadmap.available_hours(courses, exp.get("tracks"), floor_level)
+    ceiling = min(result.budget_hours, avail) if avail else result.budget_hours
+    usage = result.total_hours / ceiling if ceiling else 0
+
     ratio = None
+    tracks = exp.get("tracks")
     if tracks and valid:
-        hit = sum(1 for c in valid if c["track"] in tracks)
-        ratio = hit / len(valid)
+        ratio = sum(1 for c in valid if c["track"] in tracks) / len(valid)
         floor = exp.get("trackRatioMin", 0)
         if ratio < floor:
             off = sorted({c["track"] for c in valid if c["track"] not in tracks})
             fails.append(
-                f"트랙 비율 미달: {ratio:.0%} < {floor:.0%} (벗어난 트랙 {', '.join(off)})"
-            )
+                f"트랙 비율 미달: {ratio:.0%} < {floor:.0%} (벗어난 트랙 {', '.join(off)})")
 
     missing = [t for t in exp.get("mustInclude", []) if t not in titles]
     if missing:
@@ -90,8 +77,8 @@ def score(case, valid, total, problems, budget, avail=None):
 
     floor = exp.get("fillRateMin")
     if floor and usage < floor:
-        cap = f"{ceiling}h" + (" (가용 상한)" if avail and avail < budget else "")
-        fails.append(f"채움 부족: {total}h / {cap} = {usage:.0%} < {floor:.0%}")
+        cap = f"{ceiling}h" + (" (가용 상한)" if avail and avail < result.budget_hours else "")
+        fails.append(f"채움 부족: {result.total_hours}h / {cap} = {usage:.0%} < {floor:.0%}")
 
     cap = exp.get("maxSelected")
     if cap is not None and len(valid) > cap:
@@ -104,36 +91,23 @@ def score(case, valid, total, problems, budget, avail=None):
     return fails, {"usage": usage, "ratio": ratio}
 
 
-def run_case(case, courses, model, api_key, max_attempts):
-    budget = case["weeks"] * case["hoursPerWeek"]
-    result, selected, valid, total, problems, attempts, tokens = roadmap.generate(
-        courses, case["goal"], budget, case["weeks"],
-        case["hoursPerWeek"], case["level"], model, api_key, max_attempts,
-    )
-    avail = available_hours(courses, case)
-    fails, metrics = score(case, valid, total, problems, budget, avail)
-    return {
-        "case": case, "valid": valid, "total": total, "budget": budget,
-        "fails": fails, "metrics": metrics, "tokens": tokens, "attempts": attempts,
-    }
-
-
 def main():
     p = argparse.ArgumentParser(description="로드맵 평가 러너")
     p.add_argument("--case", help="케이스 id 하나만 (예: R-04)")
-    p.add_argument("--model", default=roadmap.os.environ.get("GEMINI_MODEL", "gemini-2.5-flash"))
+    p.add_argument("--model", default=None)
     p.add_argument("--verbose", action="store_true", help="선택된 강의까지 출력")
-    p.add_argument("--sleep", type=float, default=7.0, help="케이스 사이 대기 초. RPM 회피")
+    p.add_argument("--sleep", type=float, default=7.0, help="케이스 사이 대기 초")
     p.add_argument("--max-attempts", type=int, default=3,
                    help="검증 실패 시 재생성 포함 최대 호출 횟수. 1 이면 루프 없음")
     args = p.parse_args()
 
-    api_key = roadmap.os.environ.get("GEMINI_API_KEY")
-    if not api_key:
-        print("GEMINI_API_KEY 가 없다.", file=sys.stderr)
+    try:
+        llm = roadmap.Gemini(model=args.model)
+    except roadmap.LLMError as e:
+        print(e, file=sys.stderr)
         sys.exit(1)
 
-    courses = roadmap.load_catalog()
+    courses = roadmap.load_courses()
     cases = load_cases()
     if args.case:
         cases = [c for c in cases if c["id"] == args.case]
@@ -141,37 +115,37 @@ def main():
             print(f"그런 케이스가 없다: {args.case}", file=sys.stderr)
             sys.exit(1)
 
-    print(f"카탈로그 {len(courses)}개 · 케이스 {len(cases)}건 · 모델 {args.model}")
+    print(f"카탈로그 {len(courses)}개 · 케이스 {len(cases)}건 · 모델 {llm.model}")
     print("=" * 78)
 
     results, tok_in, tok_out = [], 0, 0
     for i, case in enumerate(cases):
         if i:
             time.sleep(args.sleep)
-        r = run_case(case, courses, args.model, api_key, args.max_attempts)
-        results.append(r)
-        tok_in += r["tokens"].get("promptTokenCount", 0)
-        tok_out += r["tokens"].get("candidatesTokenCount", 0)
+        r = roadmap.build(courses, llm, case["goal"], case["weeks"],
+                          case["hoursPerWeek"], case["level"], args.max_attempts)
+        fails, metrics = score(case, r, courses)
+        results.append((case, r, fails))
+        tok_in += r.tokens["input"]
+        tok_out += r.tokens["output"]
 
-        mark = "통과" if not r["fails"] else "실패"
-        ratio = r["metrics"]["ratio"]
-        ratio_txt = f"트랙 {ratio:.0%} · " if ratio is not None else ""
-        retry = "" if r["attempts"] == 1 else f" · 재생성 {r['attempts'] - 1}회"
-        print(f"{r['case']['id']}  {mark}  {r['case']['goal'][:22]:<24} "
-              f"{len(r['valid'])}개 · {r['total']}h/{r['budget']}h · "
-              f"{ratio_txt}채움 {r['metrics']['usage']:.0%}{retry}")
-        for msg in r["fails"]:
+        mark = "통과" if not fails else "실패"
+        ratio_txt = f"트랙 {metrics['ratio']:.0%} · " if metrics["ratio"] is not None else ""
+        retry = "" if r.attempts == 1 else f" · 재생성 {r.attempts - 1}회"
+        print(f"{case['id']}  {mark}  {case['goal'][:22]:<24} "
+              f"{len(r.courses)}개 · {r.total_hours}h/{r.budget_hours}h · "
+              f"{ratio_txt}채움 {metrics['usage']:.0%}{retry}")
+        for msg in fails:
             print(f"        - {msg}")
         if args.verbose:
-            for c in r["valid"]:
+            for c, _ in r.courses:
                 print(f"        · L{c['level']} {c['track']:<6} {c['title']}")
 
-    passed = sum(1 for r in results if not r["fails"])
-    first_try = sum(1 for r in results if r["attempts"] == 1)
-    calls = sum(r["attempts"] for r in results)
+    passed = sum(1 for _, _, f in results if not f)
+    first_try = sum(1 for _, r, _ in results if r.attempts == 1)
+    calls = sum(r.attempts for _, r, _ in results)
     print("=" * 78)
-    print(f"{passed}/{len(results)} 통과 · 첫 시도 통과 {first_try}/{len(results)} · "
-          f"호출 {calls}회")
+    print(f"{passed}/{len(results)} 통과 · 첫 시도 통과 {first_try}/{len(results)} · 호출 {calls}회")
     print(f"토큰 입력 {tok_in:,} / 출력 {tok_out:,}")
 
     if passed < len(results):
