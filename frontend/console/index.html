@@ -170,6 +170,7 @@
     <div class="grp">AI 기능</div>
     <button data-view="road" aria-current="page">커리큘럼 로드맵</button>
     <button data-view="tutor">AI 튜터</button>
+    <button data-view="regs">규정 챗봇</button>
     <div class="grp">서비스</div>
     <button data-view="catalog">강의 목록</button>
     <button data-view="account">계정 · 구독</button>
@@ -256,6 +257,35 @@
       </div>
     </section>
 
+    <!-- 조직 규정 챗봇 -->
+    <section class="view" id="v-regs" hidden>
+      <h2>규정 챗봇</h2>
+      <p class="desc">조직 규정을 물어보면 문서를 근거로 답해요. 규정에 없으면 답하지 않아요.</p>
+
+      <div class="two-col">
+        <div class="card soft">
+          <div class="info" style="background:var(--soft);border-color:var(--line);margin:0">
+            읽은 규정 <b id="reg-count">…</b>
+          </div>
+          <button class="ghost" id="regs-reset" style="width:100%;margin-top:14px">대화 지우기</button>
+          <div class="info" style="margin-top:14px">
+            강의 튜터와 달리 검색을 안 해요.<br>규정 전체를 한 번에 넣고 물어봐요.
+          </div>
+        </div>
+
+        <div>
+          <div class="quick" id="regs-quick"></div>
+          <div class="chat" id="regs-chat">
+            <div class="empty">규정에 대해 궁금한 것을 적어 보세요.</div>
+          </div>
+          <div class="ask">
+            <textarea id="rq" placeholder="예) 휴가는 어떻게 쓰나요?"></textarea>
+            <button id="regs-go">보내기</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <!-- 강의 목록 -->
     <section class="view" id="v-catalog" hidden>
       <h2>강의 목록</h2>
@@ -290,7 +320,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt
 const state = { token: null, thread: '', threadKey: 0 };
 
 /* ── 화면 전환 ───────────────────────────────── */
-const views = { road:'v-road', tutor:'v-tutor', catalog:'v-catalog', account:'v-account' };
+const views = { road:'v-road', tutor:'v-tutor', regs:'v-regs',
+                catalog:'v-catalog', account:'v-account' };
 document.querySelectorAll('nav button').forEach(b => {
   b.addEventListener('click', () => {
     document.querySelectorAll('nav button').forEach(x => x.removeAttribute('aria-current'));
@@ -304,6 +335,11 @@ document.querySelectorAll('nav button').forEach(b => {
 const SERVICES = [
   { key:'curriculum', name:'커리큘럼', path:'/up/curriculum', how:'docker compose -f compose.curriculum.yaml up -d' },
   { key:'tutor',      name:'튜터',     path:'/up/tutor',      how:'cd ai-service && uv run uvicorn app.main:app --port 8086' },
+  { key:'regs',       name:'규정 챗봇', path:'/up/regs',
+    how:'cd org-qa-chatbot/ai-service && uv run uvicorn app.main:app --port 8088',
+    // Consul 이 없으면 전체 상태가 503 이지만 규정은 살아 있다. 그 부분만 본다.
+    ok: (r, body) => { try { return JSON.parse(body).components.regulations.status === 'UP'; }
+                       catch (e) { return r.ok; } } },
   { key:'gateway',    name:'게이트웨이', path:'/up/gateway',    how:'docker compose up -d' },
 ];
 const up = {};
@@ -312,7 +348,10 @@ async function checkStatus(){
     `<span class="pill" id="p-${s.key}"><span class="d"></span>${esc(s.name)}</span>`).join('');
   await Promise.all(SERVICES.map(async s => {
     let ok = false;
-    try { ok = (await fetch(s.path, { cache:'no-store' })).ok; } catch (e) { ok = false; }
+    try {
+      const r = await fetch(s.path, { cache:'no-store' });
+      ok = s.ok ? s.ok(r, await r.text()) : r.ok;
+    } catch (e) { ok = false; }
     up[s.key] = ok;
     const el = $('p-' + s.key);
     if (el) el.className = 'pill ' + (ok ? 'up' : 'down');
@@ -516,7 +555,95 @@ $('tutor-go').onclick = async () => {
   $('tutor-go').disabled = false;
 };
 
-/* ── 3. 강의 목록 ───────────────────────────── */
+/* ── 3. 규정 챗봇 ───────────────────────────── */
+// 튜터와 응답 방식이 다르다. 튜터는 JSON 을 한 번에 주고, 이쪽은 토큰을 흘려보낸다.
+//   event: meta   근거 목록
+//   event: chunk  글자 조각 (여러 번)
+//   event: done   끝
+const RQUICK = ['휴가는 어떻게 쓰나요?', '회의실은 어떻게 예약하나요?', '오늘 서울 날씨 어때요?'];
+$('regs-quick').innerHTML = RQUICK.map((q, i) => `<button data-q="${i}">${esc(q)}</button>`).join('');
+$('regs-quick').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('rq').value = RQUICK[+b.dataset.q]; $('regs-go').click();
+});
+$('regs-reset').onclick = () => {
+  $('regs-chat').innerHTML = '<div class="empty">규정에 대해 궁금한 것을 적어 보세요.</div>';
+};
+$('rq').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('regs-go').click(); }
+});
+
+// 읽은 규정 수를 머리말 옆에 띄운다
+(async () => {
+  try {
+    const d = JSON.parse(await (await fetch('/up/regs')).text());
+    const r = d.components.regulations.details;
+    $('reg-count').textContent = `문서 ${r.documents}개 · 조각 ${r.chunks}개`;
+  } catch (e) { $('reg-count').textContent = '확인 못 함'; }
+})();
+
+$('regs-go').onclick = async () => {
+  const q = $('rq').value.trim(); if (!q) return;
+  if (!up.regs) { $('regs-chat').innerHTML = downNotice('regs'); return; }
+
+  const first = $('regs-chat').querySelector('.empty');
+  if (first) first.remove();
+  const turn = document.createElement('div');
+  turn.className = 'turn';
+  turn.innerHTML = `<div class="q">${esc(q)}</div><div class="a">규정을 읽는 중…</div>`;
+  $('regs-chat').appendChild(turn);
+  turn.scrollIntoView({ block:'nearest' });
+  $('rq').value = ''; $('regs-go').disabled = true;
+  const ans = turn.querySelector('.a');
+
+  try {
+    const res = await fetch('/api/regs/chat', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'X-Member-Id':'1' },
+      body: JSON.stringify({ question: q })
+    });
+    if (!res.ok) {
+      ans.innerHTML = `<span style="color:var(--err)">답을 받지 못했어요 (HTTP ${res.status})</span>`;
+    } else {
+      const rd = res.body.getReader(), dec = new TextDecoder();
+      let buf = '', text = '', started = false;
+      for (;;) {
+        const c = await rd.read(); if (c.done) break;
+        buf += dec.decode(c.value, { stream:true });
+        let i;
+        while ((i = buf.indexOf('\n\n')) >= 0) {
+          const blk = buf.slice(0, i); buf = buf.slice(i + 2);
+          const em = blk.match(/^event: (.+)$/m), dm = blk.match(/^data: ([\s\S]+)$/m);
+          if (!em || !dm) continue;
+          const ev = em[1];
+          let d; try { d = JSON.parse(dm[1]); } catch (e) { continue; }
+
+          if (ev === 'chunk') {
+            if (!started) { started = true; ans.textContent = ''; }
+            text += d;                       // chunk 의 data 는 문자열이다
+            ans.textContent = text;
+            turn.scrollIntoView({ block:'nearest' });
+          } else if (ev === 'meta') {
+            if (d.citations && d.citations.length) {
+              turn.insertAdjacentHTML('beforeend',
+                `<div class="cite">근거 · ${d.citations.map(esc).join(' · ')}</div>`);
+            }
+            if (d.warning) {
+              turn.insertAdjacentHTML('beforeend',
+                `<div class="meta"><span class="badge no">${esc(d.warning)}</span></div>`);
+            }
+          }
+        }
+      }
+      if (!started) ans.innerHTML = '<span style="color:var(--err)">답이 오지 않았어요.</span>';
+    }
+  } catch (e) {
+    ans.innerHTML = `<span style="color:var(--err)">${esc(String(e))}</span>`;
+  }
+  $('regs-go').disabled = false;
+};
+
+/* ── 4. 강의 목록 ───────────────────────────── */
 let catalogLoaded = false;
 async function loadCatalog(force){
   if (catalogLoaded && !force) return;
@@ -556,7 +683,7 @@ async function loadCatalog(force){
 }
 $('catalog-reload').onclick = () => loadCatalog(true);
 
-/* ── 4. 계정 · 구독 ─────────────────────────── */
+/* ── 5. 계정 · 구독 ─────────────────────────── */
 function accountOut(html){ $('account-out').innerHTML = html; }
 
 $('signup').onclick = async () => {
