@@ -201,17 +201,18 @@ scripts/                # init_vectorstore.py (S1)
 | 슬라이스 | 만들 것 | 볼 것 |
 |---|---|---|
 | ~~S1 색인~~ | 완료. 조각 633개 | |
-| ~~S2 최소 그래프~~ | 완료. `TutorState` + `retrieve` → `generate` 직선 | |
-| **S3 분기** | `grade` + 세 갈래 + `no_evidence` | 09장 `04_conditional_edges` |
-| S4 루프 | `rewrite` → `retrieve` 순환 + `retry` 상한 | 09장 `03_nodes_and_edges` |
+| ~~S2 최소 그래프~~ | 완료 | |
+| ~~S3 분기~~ | 완료. `grade` 두 단계 + `no_evidence` | |
+| **S4 루프** | `rewrite` → `retrieve` 순환 + `retry` 상한 | `04_conditional_edges/03_routing_pitfalls.py` |
 | S5 의도·힌트 | `classify` + `route_intent` + `hint` + `visibility` 필터 | 02장 구조화 출력 |
 | S6 가드레일 | 출력 유출 검사 | 없음 |
 | S7 API | `POST /chat` | 11장 `01_fastapi_serving` |
 | S8 체크포인터 | sqlite 체크포인터 + `thread_id` | 10장 `01_checkpointer_persistence` |
 | S9 평가 | 15문항 + 지표 계산 | 05장 평가, 11장 `03_observability_eval` |
 
-4.5단계 문서가 가리킨 `09장 03_routing_pitfalls`는 실제로 없다. 해당 장의 디렉터리는
-`01_graph_vs_chain` · `02_state_schema` · `03_nodes_and_edges` · `04_conditional_edges` 넷뿐이다.
+`03_routing_pitfalls`는 디렉터리가 아니라 `04_conditional_edges/` 안의 파일이다.
+거기 적힌 함정 셋(끝나지 않는 순환, 매핑에 없는 이름, 되돌릴 수 없는 작업을 안 닫기)이
+우리 그래프에 그대로 걸린다.
 
 ## 코드 작성 규약
 
