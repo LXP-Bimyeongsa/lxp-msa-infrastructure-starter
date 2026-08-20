@@ -11,6 +11,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.core.config import MIN_SCORE, get_llm
+from app.core.guardrails import check_output
 from app.graph.state import TutorState
 from app.tools.rag import search
 
@@ -173,7 +174,34 @@ def generate(state: TutorState) -> dict:
     return {
         "answer": "\n\n".join(c["text"] for c in chunks),
         "citations": [
-            {k: c[k] for k in ("course_id", "seq", "source_path", "score")} for c in chunks
+            {k: c[k] for k in ("course_id", "seq", "source_path", "score", "visibility")}
+            for c in chunks
         ],
         "route": "ANSWER",
+    }
+
+
+# 8. 출력 검사
+def guard(state: TutorState) -> dict:
+    route = state.get("route", "")
+    answer = state.get("answer", "")
+    citations = state.get("citations", [])
+
+    reasons = check_output(route, answer, citations)
+    if not reasons:
+        return {"blocked": []}
+
+    # 걸리면 답변을 버린다. 부분만 지우면 무엇이 남았는지 보장할 수 없다
+    if route == "HINT":
+        safe = "미션 정답은 알려줄 수 없다. 어느 개념이 막히는지 알려주면 그 부분을 설명하겠다."
+        return {"blocked": reasons, "answer": safe, "citations": []}
+    course = state.get("course_id") or "이 강의"
+    return {
+        "blocked": reasons,
+        "answer": (
+            f"{course} 내용에서는 이 질문에 답할 근거를 찾지 못했다. "
+            "강의에서 다루지 않는 내용일 수 있다. 강사에게 문의하는 것을 권한다."
+        ),
+        "citations": [],
+        "route": "NO_EVIDENCE",
     }

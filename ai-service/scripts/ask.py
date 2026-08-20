@@ -41,6 +41,8 @@ def main() -> None:
     if "graded_ok" in state:
         print(f"판정       : {'충분' if state['graded_ok'] else '부족'}")
         print(f"재검색     : {state.get('retry', 0)}회")
+    blocked = state.get("blocked") or []
+    print(f"가드레일   : {'통과' if not blocked else ' / '.join(blocked)}")
     print(f"인용 조각  : {len(state['citations'])}개")
     for c in state["citations"]:
         print(f"  {c['score']:.3f}  {c['source_path']}#{c['seq']}")
