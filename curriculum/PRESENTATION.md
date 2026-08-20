@@ -1,5 +1,7 @@
 # 커리큘럼 로드맵 — 발표용 정리
 
+슬라이드에 복붙할 짧은 판은 [PRESENTATION.txt](PRESENTATION.txt) 에 있다.
+
 세 가지에 답한다.
 
 1. 왜 AI를 썼나
