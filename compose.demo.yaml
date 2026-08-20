@@ -50,6 +50,21 @@ services:
   # ai-service 는 CORS 를 안 열기로 했는데(app/main.py), X-Member-Id 가 커스텀
   # 헤더라 브라우저가 preflight 를 보내고 서버는 405 를 준다. 같은 출처면
   # preflight 자체가 생기지 않아 그 결정을 그대로 둘 수 있다.
+  # 통합 콘솔 — 커리큘럼·튜터·강의·계정을 한 화면에서 시연한다.
+  # 백엔드 넷을 이 nginx 가 프록시해서 CORS 를 없앤다. 화면에는 주소 설정이 없다.
+  console:
+    image: nginx:1.27-alpine
+    container_name: lxp-console
+    volumes:
+      - ./frontend/console:/usr/share/nginx/html:ro
+      - ./frontend/console/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      # 8093 튜터 콘솔 다음 번호.
+      - "8094:80"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # lxp-net 에 안 붙인다. 호스트 포트로만 나가므로 백엔드가 없어도 단독으로 뜬다.
+
   tutor-console:
     image: nginx:1.27-alpine
     container_name: lxp-tutor-console

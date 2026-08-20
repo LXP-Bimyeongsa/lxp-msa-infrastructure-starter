@@ -1,0 +1,618 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LXP 콘솔</title>
+<style>
+  /* 시연용 통합 화면. curriculum/service/static 의 밝은 테마를 기준으로 삼고
+     tutor-console 과 client 의 화면을 같은 규칙으로 다시 그렸다.
+     색은 상태(대기·진행·성공·실패)를 구분하는 데만 쓴다. */
+  :root{
+    --bg:#ffffff; --soft:#f6f7f9; --sunken:#eef0f4;
+    --line:#e4e7ec; --line2:#d3d8e0;
+    --text:#16191d; --dim:#69707d; --faint:#98a0ac;
+    --blue:#2563eb; --blue-dark:#1d4ed8; --blue-soft:#eff4ff;
+    --ok:#16a34a; --ok-soft:#eefaf1;
+    --warn:#c2740a; --warn-soft:#fdf6ea;
+    --err:#dc2626; --err-soft:#fef4f4;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:16px/1.65 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+  button,input,select,textarea{font:inherit}
+
+  /* 머리말 */
+  header{display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+         padding:14px 24px;border-bottom:1px solid var(--line)}
+  header h1{margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em}
+  header .sub{color:var(--dim);font-size:13.5px}
+  .status{margin-left:auto;display:flex;gap:7px;flex-wrap:wrap}
+  .pill{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;
+        padding:5px 11px;border-radius:999px;border:1px solid var(--line);
+        background:var(--soft);color:var(--dim);white-space:nowrap}
+  .pill .d{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+  .pill.up{background:var(--ok-soft);border-color:#c9ecd5;color:#12692f}
+  .pill.up .d{background:var(--ok)}
+  .pill.down{background:var(--err-soft);border-color:#f4c9c9;color:#a5231f}
+  .pill.down .d{background:var(--err)}
+
+  /* 뼈대 */
+  .shell{display:grid;grid-template-columns:200px 1fr;min-height:calc(100vh - 57px)}
+  @media (max-width:860px){.shell{grid-template-columns:1fr}}
+  nav{border-right:1px solid var(--line);background:var(--soft);padding:16px 12px}
+  @media (max-width:860px){nav{border-right:0;border-bottom:1px solid var(--line);
+    display:flex;gap:8px;overflow-x:auto}}
+  nav button{display:block;width:100%;text-align:left;border:0;background:none;
+    color:var(--text);padding:10px 12px;border-radius:8px;cursor:pointer;
+    font-size:14.5px;font-weight:500;white-space:nowrap}
+  nav button:hover{background:var(--sunken)}
+  nav button[aria-current="page"]{background:var(--blue);color:#fff}
+  nav .grp{font:600 11px/1 var(--mono);letter-spacing:.1em;color:var(--faint);
+    padding:14px 12px 7px;text-transform:uppercase}
+
+  main{padding:26px 28px 60px;min-width:0}
+  .view[hidden]{display:none}
+  .view > h2{margin:0 0 4px;font-size:21px;font-weight:600;letter-spacing:-.01em}
+  .view > .desc{margin:0 0 22px;color:var(--dim);font-size:14.5px;max-width:62ch}
+
+  /* 폼 */
+  .two-col{display:grid;grid-template-columns:340px 1fr;gap:26px;align-items:start}
+  @media (max-width:900px){.two-col{grid-template-columns:1fr}}
+  .card{background:var(--bg);border:1px solid var(--line);border-radius:11px;padding:20px}
+  .card.soft{background:var(--soft)}
+  label{display:block;font-size:14px;font-weight:600;margin:16px 0 6px}
+  label:first-child{margin-top:0}
+  input,select,textarea{width:100%;padding:11px 12px;border-radius:9px;
+    border:1px solid var(--line2);background:#fff;color:var(--text);font-size:15px}
+  textarea{resize:vertical;min-height:74px;line-height:1.6}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--blue);
+    outline-offset:-1px;border-color:var(--blue)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .go{width:100%;margin-top:18px;padding:14px;border:0;border-radius:9px;
+    background:var(--blue);color:#fff;font-weight:700;font-size:16px;cursor:pointer}
+  .go:hover{background:var(--blue-dark)}
+  .go:disabled{background:#a9c1f5;cursor:not-allowed}
+  .ghost{margin-top:9px;background:var(--sunken);color:var(--text);
+    border:1px solid var(--line2);border-radius:8px;padding:10px 14px;
+    font-size:14px;cursor:pointer}
+  .ghost:hover{background:var(--line)}
+  .info{margin-top:16px;padding:12px 14px;border-radius:9px;background:var(--blue-soft);
+    border:1px solid #d3e0fd;font-size:14px}
+  .info b{font-size:16.5px}
+
+  /* 진행 단계 */
+  .steps{margin-bottom:20px}
+  .step{display:flex;gap:11px;padding:8px 0;font-size:15px;align-items:flex-start}
+  .step .m{width:19px;height:19px;border-radius:50%;flex:none;margin-top:3px;
+    border:2px solid var(--line2);background:#fff}
+  .step.now .m{border-color:var(--blue);background:var(--blue);
+    animation:blink 1.1s ease-in-out infinite}
+  .step.done .m{border-color:var(--ok);background:var(--ok)}
+  .step.redo .m{border-color:var(--warn);background:var(--warn)}
+  .step.now > span{color:var(--blue);font-weight:600}
+  .step.redo > span{color:var(--warn)}
+  .step .sub{display:block;color:var(--dim);font-size:13.5px;font-weight:400}
+  @keyframes blink{50%{opacity:.3}}
+  @media (prefers-reduced-motion:reduce){.step.now .m{animation:none}}
+
+  /* 결과 공통 */
+  .empty{color:var(--dim);font-size:15px;padding:44px 0;text-align:center}
+  .alert{border-radius:10px;padding:14px 16px;margin-bottom:16px;font-size:14.5px}
+  .alert .t{font-weight:700;margin-bottom:3px}
+  .alert.bad{border:1px solid #f4c9c9;background:var(--err-soft);color:#9c1f1c}
+  .alert.warn{border:1px solid #f0dcb8;background:var(--warn-soft);color:#8a5205}
+  .alert.mute{border:1px solid var(--line);background:var(--soft);color:var(--dim)}
+  .alert code{font:500 13px/1 var(--mono)}
+
+  .chips{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
+  .chip{font-size:13px;background:var(--soft);border:1px solid var(--line);
+    border-radius:999px;padding:4px 11px;color:var(--dim)}
+  .chip b{color:var(--text)}
+
+  .week{border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:10px}
+  .week .wh{display:flex;align-items:baseline;margin-bottom:8px}
+  .week .wh .n{font-weight:700;color:var(--blue);font-size:14.5px}
+  .week .wh .t{margin-left:auto;color:var(--dim);font-size:13px}
+  .slot{display:flex;gap:12px;padding:3px 0;font-size:14.5px}
+  .slot .h{flex:none;width:96px;color:var(--dim);font-size:13px;
+    font-variant-numeric:tabular-nums}
+  .why{padding:2px 0 5px 108px;color:var(--dim);font-size:13.5px;line-height:1.55}
+
+  /* 대화 */
+  .chat{display:flex;flex-direction:column;gap:14px;margin-bottom:18px}
+  .turn{border:1px solid var(--line);border-radius:11px;overflow:hidden}
+  .turn .q{background:var(--soft);padding:12px 16px;font-weight:500;font-size:15px}
+  .turn .a{padding:14px 16px;white-space:pre-wrap;font-size:15px;line-height:1.7}
+  .turn .meta{display:flex;gap:7px;flex-wrap:wrap;padding:0 16px 13px}
+  .badge{font:500 12px/1 var(--mono);padding:4px 9px;border-radius:6px;
+    background:var(--sunken);color:var(--dim)}
+  .badge.ans{background:var(--ok-soft);color:#12692f}
+  .badge.no{background:var(--warn-soft);color:#8a5205}
+  .cite{font:500 12px/1.5 var(--mono);color:var(--faint);padding:0 16px 13px}
+  .ask{display:flex;gap:10px;align-items:flex-end}
+  .ask textarea{flex:1;min-height:56px}
+  .ask button{flex:none;padding:14px 22px;border:0;border-radius:9px;
+    background:var(--blue);color:#fff;font-weight:700;cursor:pointer}
+  .ask button:disabled{background:#a9c1f5;cursor:not-allowed}
+
+  .quick{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px}
+  .quick button{background:var(--soft);border:1px solid var(--line);border-radius:999px;
+    padding:6px 13px;font-size:13.5px;color:var(--dim);cursor:pointer}
+  .quick button:hover{border-color:var(--blue);color:var(--blue)}
+
+  /* 목록 */
+  .list{display:grid;gap:9px}
+  .item{border:1px solid var(--line);border-radius:10px;padding:13px 16px;
+    display:flex;gap:14px;align-items:center}
+  .item .ti{font-weight:600;font-size:15px}
+  .item .sm{color:var(--dim);font-size:13.5px;margin-top:2px}
+  .item .rt{margin-left:auto;text-align:right;flex:none}
+
+  details{margin-top:22px;border-top:1px solid var(--line);padding-top:13px}
+  summary{cursor:pointer;color:var(--dim);font-size:13.5px}
+  .log{margin-top:9px;border:1px solid var(--line);border-radius:9px;background:var(--soft);
+    padding:11px;font:11.5px/1.6 var(--mono);color:#4b5563;max-height:240px;
+    overflow:auto;white-space:pre-wrap;word-break:break-all}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>LXP 콘솔</h1>
+  <span class="sub">시연용 통합 화면</span>
+  <div class="status" id="status"></div>
+</header>
+
+<div class="shell">
+  <nav>
+    <div class="grp">AI 기능</div>
+    <button data-view="road" aria-current="page">커리큘럼 로드맵</button>
+    <button data-view="tutor">AI 튜터</button>
+    <div class="grp">서비스</div>
+    <button data-view="catalog">강의 목록</button>
+    <button data-view="account">계정 · 구독</button>
+  </nav>
+
+  <main>
+    <!-- 커리큘럼 로드맵 -->
+    <section class="view" id="v-road">
+      <h2>커리큘럼 로드맵</h2>
+      <p class="desc">목표를 알려주시면 지금 있는 강의로 학습 순서를 짜드려요.</p>
+
+      <div class="two-col">
+        <div class="card soft">
+          <label for="goal">무엇을 배우고 싶으세요?</label>
+          <input id="goal" type="text" autocomplete="off"
+                 placeholder="예) 백엔드 개발자가 되고 싶어요">
+          <div class="row2">
+            <div>
+              <label for="weeks">기간</label>
+              <select id="weeks">
+                <option value="2">2주</option><option value="4">4주</option>
+                <option value="8" selected>8주</option><option value="12">12주</option>
+                <option value="26">26주</option>
+              </select>
+            </div>
+            <div>
+              <label for="hpw">일주일에</label>
+              <select id="hpw">
+                <option value="5">5시간</option><option value="10">10시간</option>
+                <option value="15" selected>15시간</option><option value="20">20시간</option>
+              </select>
+            </div>
+          </div>
+          <label for="level">지금 어느 정도 아세요?</label>
+          <select id="level">
+            <option value="1" selected>처음이에요</option>
+            <option value="2">기초는 알아요</option>
+            <option value="3">실무를 조금 해봤어요</option>
+            <option value="4">혼자 만들어봤어요</option>
+            <option value="5">깊이 파고 싶어요</option>
+          </select>
+          <div class="info">총 <b id="total">120</b>시간이에요.</div>
+          <button class="go" id="road-go">학습 경로 만들기</button>
+        </div>
+
+        <div>
+          <div class="steps" id="road-steps" hidden></div>
+          <div id="road-out"><div class="empty">배우고 싶은 것을 적고 버튼을 눌러 보세요.</div></div>
+          <details id="road-dev" hidden>
+            <summary>서버가 보낸 원본 기록</summary>
+            <div class="log" id="road-log"></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI 튜터 -->
+    <section class="view" id="v-tutor" hidden>
+      <h2>AI 튜터</h2>
+      <p class="desc">강의 내용을 물어보면 교안을 근거로 답해요. 근거가 없으면 답하지 않아요.</p>
+
+      <div class="two-col">
+        <div class="card soft">
+          <label for="member">학습자 번호</label>
+          <input id="member" type="number" value="1" min="1">
+          <label for="course">강의 범위</label>
+          <select id="course"><option value="">전체</option></select>
+          <button class="ghost" id="tutor-reset" style="width:100%">새 대화로 시작</button>
+          <div class="info" style="background:var(--soft);border-color:var(--line)">
+            대화 <b id="thread" style="font:500 13px/1 var(--mono)">새 대화</b>
+          </div>
+        </div>
+
+        <div>
+          <div class="quick" id="tutor-quick"></div>
+          <div class="chat" id="tutor-chat">
+            <div class="empty">아래에 궁금한 것을 적어 보세요.</div>
+          </div>
+          <div class="ask">
+            <textarea id="q" placeholder="강의 내용에 대해 물어보세요"></textarea>
+            <button id="tutor-go">보내기</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 강의 목록 -->
+    <section class="view" id="v-catalog" hidden>
+      <h2>강의 목록</h2>
+      <p class="desc">게이트웨이를 거쳐 course-service 에서 가져와요.</p>
+      <div id="catalog-out"><div class="empty">불러오는 중…</div></div>
+      <button class="ghost" id="catalog-reload">다시 불러오기</button>
+    </section>
+
+    <!-- 계정 -->
+    <section class="view" id="v-account" hidden>
+      <h2>계정 · 구독</h2>
+      <p class="desc">Keycloak 으로 로그인하고 구독을 만들어요.</p>
+
+      <div class="two-col">
+        <div class="card soft">
+          <label for="email">이메일</label>
+          <input id="email" type="email" value="demo@lxp.test" autocomplete="off">
+          <label for="pw">비밀번호</label>
+          <input id="pw" type="password" value="demo1234!">
+          <button class="go" id="login">로그인</button>
+          <button class="ghost" id="signup" style="width:100%">가입부터 하기</button>
+        </div>
+        <div id="account-out"><div class="empty">로그인하면 구독 상태가 보여요.</div></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const state = { token: null, thread: '', threadKey: 0 };
+
+/* ── 화면 전환 ───────────────────────────────── */
+const views = { road:'v-road', tutor:'v-tutor', catalog:'v-catalog', account:'v-account' };
+document.querySelectorAll('nav button').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('nav button').forEach(x => x.removeAttribute('aria-current'));
+    b.setAttribute('aria-current', 'page');
+    Object.entries(views).forEach(([k, id]) => { $(id).hidden = (k !== b.dataset.view); });
+    if (b.dataset.view === 'catalog') loadCatalog();
+  });
+});
+
+/* ── 서비스 상태 ─────────────────────────────── */
+const SERVICES = [
+  { key:'curriculum', name:'커리큘럼', path:'/up/curriculum', how:'docker compose -f compose.curriculum.yaml up -d' },
+  { key:'tutor',      name:'튜터',     path:'/up/tutor',      how:'cd ai-service && uv run uvicorn app.main:app --port 8086' },
+  { key:'gateway',    name:'게이트웨이', path:'/up/gateway',    how:'docker compose up -d' },
+];
+const up = {};
+async function checkStatus(){
+  $('status').innerHTML = SERVICES.map(s =>
+    `<span class="pill" id="p-${s.key}"><span class="d"></span>${esc(s.name)}</span>`).join('');
+  await Promise.all(SERVICES.map(async s => {
+    let ok = false;
+    try { ok = (await fetch(s.path, { cache:'no-store' })).ok; } catch (e) { ok = false; }
+    up[s.key] = ok;
+    const el = $('p-' + s.key);
+    if (el) el.className = 'pill ' + (ok ? 'up' : 'down');
+  }));
+}
+function downNotice(key){
+  const s = SERVICES.find(x => x.key === key);
+  return `<div class="alert warn"><div class="t">${esc(s.name)} 서비스가 안 떠 있어요</div>`
+       + `터미널에서 아래를 실행하고 위쪽 상태 표시를 다시 확인해 주세요.<br>`
+       + `<code>${esc(s.how)}</code></div>`;
+}
+checkStatus();
+setInterval(checkStatus, 20000);
+
+/* ── 1. 커리큘럼 로드맵 ──────────────────────── */
+function total(){ $('total').textContent = (+$('weeks').value) * (+$('hpw').value); }
+['weeks','hpw'].forEach(id => $(id).addEventListener('change', total));
+total();
+$('goal').addEventListener('keydown', e => { if (e.key === 'Enter') $('road-go').click(); });
+
+let steps = [];
+function addStep(text, sub, cls){
+  const prev = steps[steps.length - 1];
+  if (prev && prev.classList.contains('now')) {
+    prev.classList.remove('now');
+    if (!prev.classList.contains('redo')) prev.classList.add('done');
+  }
+  const el = document.createElement('div');
+  el.className = 'step ' + (cls || 'now');
+  el.innerHTML = '<span class="m"></span><span>' + esc(text)
+    + (sub ? '<span class="sub">' + esc(sub) + '</span>' : '') + '</span>';
+  $('road-steps').appendChild(el);
+  steps.push(el);
+  return el;
+}
+function settleSteps(){
+  const l = steps[steps.length - 1];
+  if (l && l.classList.contains('now')) { l.classList.remove('now'); l.classList.add('done'); }
+}
+function roadFail(t, b){
+  settleSteps();
+  $('road-out').innerHTML = `<div class="alert bad"><div class="t">${esc(t)}</div>${esc(b)}</div>`;
+}
+function renderRoad(d){
+  const p = [];
+  if (!d.weeks.length) p.push('<div class="alert mute"><div class="t">맞는 강의를 못 찾았어요</div>'
+    + '지금 있는 강의 중에는 이 목표에 맞는 것이 없어요. 억지로 채우지 않고 비워 두었어요.</div>');
+  if (d.problems && d.problems.length) p.push('<div class="alert bad"><div class="t">다듬지 못한 곳이 있어요</div>'
+    + d.problems.map(esc).join('<br>') + '</div>');
+  if (d.goalSummary || d.courses.length) {
+    p.push('<div class="card" style="margin-bottom:16px">'
+      + `<div style="font-size:16.5px;font-weight:600">${esc(d.goalSummary || '')}</div>`
+      + '<div class="chips">'
+      + `<span class="chip">강의 <b>${d.courses.length}</b>개</span>`
+      + `<span class="chip">총 <b>${d.totalHours}</b>시간</span>`
+      + `<span class="chip"><b>${d.weekCount}</b>주 계획</span>`
+      + (d.model ? `<span class="chip">${esc(d.model)}</span>` : '')
+      + '</div></div>');
+  }
+  const why = {}; d.courses.forEach(c => { why[c.title] = c.reason; });
+  const seen = new Set();
+  d.weeks.forEach(w => {
+    const slots = w.slots.map(s => {
+      const span = s.hours === s.totalHours ? s.hours + '시간'
+                 : s.hours + '시간 / ' + s.totalHours + '시간 중';
+      let row = `<div class="slot"><span class="h">${span}</span><span>${esc(s.title)}</span></div>`;
+      if (why[s.title] && !seen.has(s.title)) { seen.add(s.title);
+        row += `<div class="why">${esc(why[s.title])}</div>`; }
+      return row;
+    }).join('');
+    p.push(`<div class="week"><div class="wh"><span class="n">${w.week}주차</span>`
+      + `<span class="t">${w.hours}시간</span></div>${slots}</div>`);
+  });
+  $('road-out').innerHTML = p.join('');
+}
+
+$('road-go').onclick = async () => {
+  const goal = $('goal').value.trim();
+  if (!goal) { $('goal').focus(); return; }
+  if (!up.curriculum) { $('road-out').innerHTML = downNotice('curriculum'); return; }
+
+  $('road-go').disabled = true;
+  steps = []; $('road-steps').innerHTML = ''; $('road-steps').hidden = false;
+  $('road-log').textContent = ''; $('road-dev').hidden = true;
+  $('road-out').innerHTML = '';
+  let picking = null, budget = 0, done = false;
+
+  try {
+    // EventSource 는 GET 만 되어서 POST 로 흘려받으려면 이렇게 씁니다.
+    const res = await fetch('/api/ai/curriculum/roadmap/stream', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ goal, weeks:+$('weeks').value,
+        hoursPerWeek:+$('hpw').value, level:+$('level').value })
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({ detail: res.statusText }));
+      roadFail('지금은 만들 수 없어요', e.detail); $('road-go').disabled = false; return;
+    }
+    const rd = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const c = await rd.read(); if (c.done) break;
+      buf += dec.decode(c.value, { stream:true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const blk = buf.slice(0, i); buf = buf.slice(i + 2);
+        const em = blk.match(/^event: (.+)$/m), dm = blk.match(/^data: (.+)$/m);
+        if (!em || !dm) continue;
+        const ev = em[1], d = JSON.parse(dm[1]);
+        $('road-dev').hidden = false;
+        $('road-log').textContent += 'event: ' + ev + '\n'
+          + JSON.stringify(ev === 'result' ? { courses:d.courses.length, weeks:d.weekCount } : d) + '\n\n';
+
+        if (ev === 'start') { budget = d.budgetHours;
+          addStep('목표를 읽었어요', '강의 ' + d.catalog + '개 중에서 골라요', 'done');
+        } else if (ev === 'generate') {
+          picking = addStep(d.attempt === 1 ? '강의를 고르는 중이에요' : '다시 고르는 중이에요',
+                            d.attempt === 1 ? null : d.attempt + '번째 시도예요');
+        } else if (ev === 'verify') {
+          if (d.ok) addStep('일정이 맞는지 확인했어요', d.selected + '개 · ' + d.total_hours + '시간', 'done');
+          else {
+            if (picking) { picking.classList.remove('now'); picking.classList.add('done'); }
+            const over = budget && d.total_hours > budget;
+            addStep(over ? '시간이 넘어서 다시 골라요' : '순서가 맞지 않아 다시 골라요',
+                    over ? d.total_hours + '시간이라 ' + budget + '시간을 넘어요' : '고른 강의를 다시 맞춰요',
+                    'redo');
+          }
+        } else if (ev === 'schedule') { addStep('주차별로 나눴어요', d.week_count + '주 계획', 'done');
+        } else if (ev === 'result') { done = true; settleSteps(); renderRoad(d);
+        } else if (ev === 'error') { done = true;
+          roadFail(d.status === 429 ? '오늘 쓸 수 있는 횟수를 다 썼어요' : '만드는 중에 문제가 생겼어요',
+                   d.status === 429 ? '잠시 뒤에 다시 눌러 주세요.' : d.detail);
+        }
+      }
+    }
+    if (!done) roadFail('중간에 연결이 끊겼어요', '다시 한 번 눌러 주세요.');
+  } catch (e) { roadFail('연결하지 못했어요', String(e)); }
+  $('road-go').disabled = false;
+};
+
+/* ── 2. AI 튜터 ──────────────────────────────── */
+const QUICK = ['랭그래프와 랭체인의 차이가 뭔가요?', '체크포인터는 언제 쓰나요?', '오늘 점심 뭐 먹을까요?'];
+$('tutor-quick').innerHTML = QUICK.map((q, i) =>
+  `<button data-q="${i}">${esc(q)}</button>`).join('');
+$('tutor-quick').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  $('q').value = QUICK[+b.dataset.q]; $('tutor-go').click();
+});
+$('tutor-reset').onclick = () => {
+  state.thread = ''; state.threadKey++;
+  $('thread').textContent = '새 대화';
+  $('tutor-chat').innerHTML = '<div class="empty">아래에 궁금한 것을 적어 보세요.</div>';
+};
+$('q').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('tutor-go').click(); }
+});
+
+$('tutor-go').onclick = async () => {
+  const q = $('q').value.trim(); if (!q) return;
+  if (!up.tutor) { $('tutor-chat').innerHTML = downNotice('tutor'); return; }
+
+  const first = $('tutor-chat').querySelector('.empty');
+  if (first) first.remove();
+  const turn = document.createElement('div');
+  turn.className = 'turn';
+  turn.innerHTML = `<div class="q">${esc(q)}</div><div class="a">생각하는 중…</div>`;
+  $('tutor-chat').appendChild(turn);
+  turn.scrollIntoView({ block:'nearest' });
+  $('q').value = ''; $('tutor-go').disabled = true;
+
+  try {
+    const body = { question: q };
+    if (state.thread) body.thread_id = state.thread;
+    const cid = $('course').value; if (cid) body.course_id = cid;
+    const res = await fetch('/api/ai/chat', {
+      method:'POST',
+      headers:{ 'Content-Type':'application/json', 'X-Member-Id': $('member').value || '1' },
+      body: JSON.stringify(body)
+    });
+    const d = await res.json().catch(() => null);
+    if (!res.ok || !d) {
+      turn.querySelector('.a').innerHTML =
+        `<span style="color:var(--err)">답을 받지 못했어요 (HTTP ${res.status})</span>`;
+    } else {
+      if (d.thread_id) { state.thread = d.thread_id; $('thread').textContent = d.thread_id.slice(0, 12); }
+      turn.querySelector('.a').textContent = d.answer || '';
+      const cls = d.route === 'ANSWER' ? 'ans' : 'no';
+      const meta = [`<span class="badge ${cls}">${esc(d.route || '')}</span>`];
+      // route 와 intent 가 같으면 한 번만 보인다 (범위 밖 질문이 그렇다)
+      if (d.intent && d.intent !== d.route) meta.push(`<span class="badge">${esc(d.intent)}</span>`);
+      if (d.top_score) meta.push(`<span class="badge">유사도 ${Number(d.top_score).toFixed(2)}</span>`);
+      turn.insertAdjacentHTML('beforeend', `<div class="meta">${meta.join('')}</div>`);
+      if (d.citations && d.citations.length) {
+        turn.insertAdjacentHTML('beforeend',
+          `<div class="cite">근거 · ${d.citations.map(c => esc(c.source_path || '')).join(' · ')}</div>`);
+      }
+    }
+  } catch (e) {
+    turn.querySelector('.a').innerHTML = `<span style="color:var(--err)">${esc(String(e))}</span>`;
+  }
+  $('tutor-go').disabled = false;
+};
+
+/* ── 3. 강의 목록 ───────────────────────────── */
+let catalogLoaded = false;
+async function loadCatalog(force){
+  if (catalogLoaded && !force) return;
+  catalogLoaded = true;
+  $('catalog-out').innerHTML = '<div class="empty">불러오는 중…</div>';
+
+  // 게이트웨이가 안 떠 있으면 커리큘럼 서비스의 카탈로그로 대신 보여준다.
+  // 시연 중에 빈 화면을 띄우지 않으려는 것이다.
+  if (!up.gateway) {
+    let fallback = '';
+    if (up.curriculum) {
+      try {
+        const d = await (await fetch('/api/ai/curriculum/catalog')).json();
+        fallback = '<div class="alert mute"><div class="t">커리큘럼 서비스의 목록을 대신 보여줘요</div>'
+          + '게이트웨이가 뜨면 course-service 에서 가져와요.</div>'
+          + '<div class="list">' + d.courses.slice(0, 30).map(c =>
+            `<div class="item"><div><div class="ti">${esc(c.title)}</div>`
+            + `<div class="sm">${esc(c.track)} · L${c.level}</div></div>`
+            + `<div class="rt sm">${c.estimatedHours}시간</div></div>`).join('') + '</div>';
+      } catch (e) { fallback = ''; }
+    }
+    $('catalog-out').innerHTML = downNotice('gateway') + fallback;
+    return;
+  }
+  try {
+    const r = await fetch('/api/courses', { headers: state.token ? { Authorization:'Bearer ' + state.token } : {} });
+    const d = await r.json();
+    const arr = Array.isArray(d) ? d : (d.content || d.courses || []);
+    $('catalog-out').innerHTML = arr.length
+      ? '<div class="list">' + arr.map(c =>
+          `<div class="item"><div><div class="ti">${esc(c.title)}</div>`
+          + `<div class="sm">${esc(c.description || '')}</div></div></div>`).join('') + '</div>'
+      : '<div class="empty">아직 등록된 강의가 없어요.</div>';
+  } catch (e) {
+    $('catalog-out').innerHTML = `<div class="alert bad"><div class="t">불러오지 못했어요</div>${esc(String(e))}</div>`;
+  }
+}
+$('catalog-reload').onclick = () => loadCatalog(true);
+
+/* ── 4. 계정 · 구독 ─────────────────────────── */
+function accountOut(html){ $('account-out').innerHTML = html; }
+
+$('signup').onclick = async () => {
+  if (!up.gateway) { accountOut(downNotice('gateway')); return; }
+  try {
+    const r = await fetch('/api/members', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email:$('email').value, password:$('pw').value, name:'데모' })
+    });
+    accountOut(r.ok
+      ? '<div class="alert mute"><div class="t">가입했어요</div>이어서 로그인해 주세요.</div>'
+      : `<div class="alert bad"><div class="t">가입하지 못했어요 (HTTP ${r.status})</div>이미 있는 계정일 수 있어요.</div>`);
+  } catch (e) { accountOut(`<div class="alert bad"><div class="t">연결하지 못했어요</div>${esc(String(e))}</div>`); }
+};
+
+$('login').onclick = async () => {
+  if (!up.gateway) { accountOut(downNotice('gateway')); return; }
+  $('login').disabled = true;
+  try {
+    const body = new URLSearchParams({ grant_type:'password', client_id:'lxp-client',
+      username:$('email').value, password:$('pw').value }).toString();
+    const r = await fetch('/realms/lxp/protocol/openid-connect/token', {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, body });
+    const d = await r.json().catch(() => null);
+    if (!r.ok || !d || !d.access_token) {
+      accountOut(`<div class="alert bad"><div class="t">로그인하지 못했어요</div>`
+        + `Keycloak(8180)이 떠 있는지, 계정이 있는지 확인해 주세요.</div>`);
+    } else {
+      state.token = d.access_token;
+      const me = await fetch('/api/members/me', { headers:{ Authorization:'Bearer ' + state.token } })
+        .then(x => x.json()).catch(() => null);
+      accountOut('<div class="alert mute"><div class="t">로그인했어요</div>'
+        + (me && me.email ? esc(me.email) : '토큰을 받았어요') + '</div>'
+        + '<div class="card"><label for="plan">구독 플랜</label>'
+        + '<select id="plan"><option value="BASIC">BASIC</option><option value="PRO">PRO</option></select>'
+        + '<button class="go" id="sub">구독 만들기</button></div>');
+      $('sub').onclick = async () => {
+        $('sub').disabled = true;
+        try {
+          const s = await fetch('/api/subscriptions', {
+            method:'POST',
+            headers:{'Content-Type':'application/json', Authorization:'Bearer ' + state.token},
+            body: JSON.stringify({ plan: $('plan').value })
+          });
+          const sd = await s.json().catch(() => null);
+          accountOut(`<div class="alert ${s.ok ? 'mute' : 'bad'}">`
+            + `<div class="t">${s.ok ? '구독을 만들었어요' : '만들지 못했어요'}</div>`
+            + `<code>${esc(JSON.stringify(sd))}</code></div>`);
+        } catch (e) {
+          accountOut(`<div class="alert bad"><div class="t">연결하지 못했어요</div>${esc(String(e))}</div>`);
+        }
+      };
+    }
+  } catch (e) { accountOut(`<div class="alert bad"><div class="t">연결하지 못했어요</div>${esc(String(e))}</div>`); }
+  $('login').disabled = false;
+};
+</script>
+</body>
+</html>
