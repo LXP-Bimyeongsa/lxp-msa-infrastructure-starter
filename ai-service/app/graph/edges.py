@@ -16,6 +16,16 @@ from app.core.config import MAX_RETRY
 from app.graph.state import TutorState
 
 
+def route_intent(state: TutorState) -> Literal["hint", "no_evidence", "retrieve"]:
+    # 정답을 요구하는 질문은 검색 자체를 하지 않는다. 검색 후에 막으면 정답 문서가
+    # 이미 손에 있고, 그때부터는 참고하지 않았다고 보장할 방법이 없다
+    if state.get("intent") == "SOLUTION_SEEKING":
+        return "hint"
+    if state.get("intent") == "OUT_OF_SCOPE":
+        return "no_evidence"
+    return "retrieve"
+
+
 def route_grade(state: TutorState) -> Literal["generate", "rewrite", "no_evidence"]:
     if state.get("graded_ok"):
         return "generate"

@@ -16,21 +16,36 @@ from functools import lru_cache
 
 from langgraph.graph import END, START, StateGraph
 
-from app.graph.edges import route_grade
-from app.graph.nodes import generate, grade, no_evidence, retrieve, rewrite
+from app.graph.edges import route_grade, route_intent
+from app.graph.nodes import (
+    classify,
+    generate,
+    grade,
+    hint,
+    no_evidence,
+    retrieve,
+    rewrite,
+)
 from app.graph.state import TutorState
 
 
 @lru_cache(maxsize=1)
 def build_graph():
     g = StateGraph(TutorState)
+    g.add_node("classify", classify)
     g.add_node("retrieve", retrieve)
     g.add_node("grade", grade)
     g.add_node("generate", generate)
     g.add_node("rewrite", rewrite)
+    g.add_node("hint", hint)
     g.add_node("no_evidence", no_evidence)
 
-    g.add_edge(START, "retrieve")
+    g.add_edge(START, "classify")
+    g.add_conditional_edges(
+        "classify",
+        route_intent,
+        {"hint": "hint", "no_evidence": "no_evidence", "retrieve": "retrieve"},
+    )
     g.add_edge("retrieve", "grade")
     # 매핑 키는 route_grade 의 Literal 과 같은 값이어야 한다.
     # 매핑에 없는 값을 돌려주면 그 노드로 갈 길이 없다
@@ -40,6 +55,7 @@ def build_graph():
         {"generate": "generate", "rewrite": "rewrite", "no_evidence": "no_evidence"},
     )
     g.add_edge("rewrite", "retrieve")
+    g.add_edge("hint", END)
     g.add_edge("generate", END)
     g.add_edge("no_evidence", END)
     return g.compile()
