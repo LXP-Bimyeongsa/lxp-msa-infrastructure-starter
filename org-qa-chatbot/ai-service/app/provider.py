@@ -13,11 +13,21 @@
 얇게 유지한다. Gemini SDK 타입이 이 인터페이스로 새어나오면 추상화한 의미가 없다.
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from typing import Protocol, runtime_checkable
 
+from prometheus_client import Counter
+
 log = logging.getLogger(__name__)
+
+# 12번 429 재시도 결과. recovered=재시도 끝에 성공, exhausted=재시도를 다 썼는데도 429.
+# RPD(일일 한도)와 RPM(분당 한도)을 구분하지 않는다 — 실제 429 응답의 정확한
+# 형태를 검증하지 못한 채로 구분 로직을 넣으면 오히려 잘못 분류할 위험이 크다.
+# 지금은 run_eval.py와 같은 지수 백오프만 적용하고, 운영 로그에서 실제 형태를
+# 본 뒤 필요하면 구분을 추가한다.
+RETRIES = Counter("ai_provider_retry_total", "429 재시도 결과", ["outcome"])
 
 # 회차 재현성을 위해 고정한다. 평가 스크립트와 같은 값이어야 운영과 측정이 일치한다.
 TEMPERATURE = 0
@@ -53,12 +63,21 @@ async def collect(provider: LLMProvider, system: str, prompt: str) -> str:
 class GeminiProvider:
     """google-genai 구현체."""
 
-    def __init__(self, api_key: str, model: str, timeout_seconds: float = 30.0):
+    def __init__(
+        self,
+        api_key: str,
+        model: str,
+        timeout_seconds: float = 30.0,
+        retry_max_attempts: int = 3,
+        retry_initial_delay_seconds: float = 2.0,
+    ):
         from google import genai
         from google.genai import types
 
         self._types = types
         self._model = model
+        self._retry_max_attempts = retry_max_attempts
+        self._retry_initial_delay = retry_initial_delay_seconds
         # SDK가 타임아웃을 밀리초로 받는다.
         self._client = genai.Client(
             api_key=api_key,
@@ -77,7 +96,12 @@ class GeminiProvider:
             system_instruction=system,
         )
 
-    async def generate_stream(self, system: str, prompt: str) -> AsyncIterator[str]:
+    async def _attempt(self, system: str, prompt: str) -> AsyncIterator[str]:
+        """한 번의 호출. 재시도는 generate_stream이 감싼다.
+
+        테스트에서 이 메서드만 오버라이드하면 실제 API 없이 재시도 루프를
+        시험할 수 있다.
+        """
         from google.genai import errors
 
         try:
@@ -89,12 +113,39 @@ class GeminiProvider:
         except errors.ClientError as e:
             code = getattr(e, "code", None)
             if code == 429:
-                # 12번에서 재시도를 감싼다. 여기서는 분류만 한다.
                 raise ProviderError("모델 호출량 한도에 걸렸다", status=429,
                                     retryable=True) from e
             raise ProviderError(f"모델 호출이 거부됐다 (code {code})", status=502) from e
         except errors.APIError as e:
             raise ProviderError(f"모델 API 오류: {e}", status=502) from e
+
+    async def generate_stream(self, system: str, prompt: str) -> AsyncIterator[str]:
+        """429는 지수 백오프로 재시도한다(계획서 12번, run_eval.py와 같은 정책).
+
+        스트림이 이미 한 조각이라도 내보낸 뒤에 429가 나면 재시도하지 않는다.
+        사용자 화면에 이미 나간 내용이 있어 다시 부르면 중복·불일치가 생긴다.
+        """
+        delay = self._retry_initial_delay
+        for attempt in range(self._retry_max_attempts + 1):
+            yielded_any = False
+            try:
+                async for piece in self._attempt(system, prompt):
+                    yielded_any = True
+                    yield piece
+                if attempt > 0:
+                    RETRIES.labels(outcome="recovered").inc()
+                return
+            except ProviderError as e:
+                if e.status == 429 and not yielded_any and attempt < self._retry_max_attempts:
+                    log.warning(
+                        "모델 호출량 한도(429), %.0f초 후 재시도 (%d/%d)",
+                        delay, attempt + 1, self._retry_max_attempts)
+                    await asyncio.sleep(delay)
+                    delay *= 2
+                    continue
+                if e.status == 429 and attempt > 0:
+                    RETRIES.labels(outcome="exhausted").inc()
+                raise
 
 
 class StubProvider:

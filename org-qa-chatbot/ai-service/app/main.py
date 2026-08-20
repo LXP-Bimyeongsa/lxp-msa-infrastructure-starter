@@ -34,7 +34,8 @@ async def lifespan(app: FastAPI):
     # 낫고, 규정 적재 같은 나머지 문제를 같이 진단할 수 있다.
     if settings.gemini_api_key:
         app.state.provider = GeminiProvider(
-            settings.gemini_api_key, settings.model, settings.request_timeout_seconds)
+            settings.gemini_api_key, settings.model, settings.request_timeout_seconds,
+            settings.retry_max_attempts, settings.retry_initial_delay_seconds)
         log.info("모델 provider 준비: %s", settings.model)
     else:
         app.state.provider = None
