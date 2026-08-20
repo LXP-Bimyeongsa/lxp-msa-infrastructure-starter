@@ -13,6 +13,12 @@
 #   DB 를 쓰지 않는다. 강의 목록은 이미지 안 JSON 을 기동할 때 한 번 읽는다.
 #   나중에 course-service 목록 API 로 바꾸면 그때 depends_on 이 생긴다.
 
+# 프로젝트 이름을 따로 준다. 안 주면 폴더 이름에서 만들어져 compose.yaml 과
+# 같은 프로젝트가 되고, 그러면 이 파일로 부른 명령이 스택 전체를 대상으로 본다.
+# `ps -a` 가 27개를 다 보여주고 `--remove-orphans` 를 붙이면 전부 지운다.
+# compose.deploy.yaml 이 `name: lxp-deploy` 로 같은 것을 피하고 있다.
+name: lxp-curriculum
+
 services:
 
   curriculum-service:
