@@ -7,15 +7,18 @@ CLI(`scripts/roadmap.py`)와 평가 러너가 같은 패키지를 쓰므로 동�
     GET  /actuator/health   Prometheus 스크레이프와 compose healthcheck 용
     GET  /api/ai/curriculum/catalog
     POST /api/ai/curriculum/roadmap
+    POST /api/ai/curriculum/roadmap/stream   같은 일을 SSE 로 흘려보낸다
 
 gateway 를 거쳐 들어오는 것을 전제한다. 서비스 토큰 검증(D-33)은 아직 없다.
 """
 
+import json
 import os
 import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -95,6 +98,10 @@ def create_roadmap(req: RoadmapRequest):
         status = 429 if e.status == 429 else 502
         raise HTTPException(status_code=status, detail=e.detail[:500])
 
+    return to_response(r)
+
+
+def to_response(r) -> RoadmapResponse:
     return RoadmapResponse(
         goalSummary=r.goal_summary,
         courses=[
@@ -116,4 +123,63 @@ def create_roadmap(req: RoadmapRequest):
         weekCount=r.week_count,
         attempts=r.attempts,
         problems=r.problems,
+    )
+
+
+def sse(event, data):
+    """SSE 한 덩어리. 빈 줄 하나로 끝난다."""
+    body = json.dumps(data, ensure_ascii=False)
+    return f"event: {event}\ndata: {body}\n\n"
+
+
+@app.post("/api/ai/curriculum/roadmap/stream")
+def stream_roadmap(req: RoadmapRequest):
+    """로드맵을 만들면서 단계마다 흘려보낸다.
+
+    토큰 단위가 아니라 단계 단위다. 모델이 JSON 한 덩어리를 뱉으므로
+    반쯤 온 JSON 으로는 화면에 그릴 것이 없다. 쓸모는 재생성이 도는 동안
+    화면이 멈춰 보이지 않게 하는 것이다. 재생성까지 가면 30초를 넘긴다.
+
+    이벤트는 start / generate / verify / schedule / result / error 여섯이다.
+    result 나 error 가 오면 끝이다.
+
+    한 번 흘려보내기 시작하면 상태 코드를 바꿀 수 없다. 이미 200 이 나갔다.
+    그래서 모델 오류는 error 이벤트로 간다. 상태 코드로 받고 싶으면
+    스트리밍 아닌 쪽(POST .../roadmap)을 쓴다.
+    """
+    # 키가 없는 것은 흘려보내기 전에 걸린다. 여기까지는 상태 코드가 먹는다.
+    try:
+        llm = roadmap.Gemini()
+    except roadmap.LLMError as e:
+        raise HTTPException(status_code=503, detail=f"모델을 부를 수 없다: {e.detail}")
+
+    def events():
+        yield sse("start", {
+            "goal": req.goal,
+            "budgetHours": req.weeks * req.hoursPerWeek,
+            "weeks": req.weeks,
+            "catalog": len(COURSES),
+            "maxAttempts": MAX_ATTEMPTS,
+        })
+        try:
+            for kind, data in roadmap.stream(
+                COURSES, llm, req.goal, req.weeks,
+                req.hoursPerWeek, req.level, MAX_ATTEMPTS,
+            ):
+                if kind == "result":
+                    yield sse("result", to_response(data).model_dump())
+                else:
+                    yield sse(kind, data)
+        except roadmap.LLMError as e:
+            # 429 는 무료 티어 한도라 잠시 뒤 다시 부르면 된다.
+            yield sse("error", {"status": e.status, "detail": e.detail[:500]})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            # nginx 가 앞에 있으면 버퍼링 때문에 한꺼번에 몰려 나온다.
+            "X-Accel-Buffering": "no",
+        },
     )
