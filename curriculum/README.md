@@ -395,12 +395,50 @@ API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은
 | `GET /actuator/health` | compose healthcheck 와 Prometheus 스크레이프 |
 | `GET /api/ai/curriculum/catalog` | 고를 수 있는 강의 목록 |
 | `POST /api/ai/curriculum/roadmap` | 로드맵 생성 |
+| `POST /api/ai/curriculum/roadmap/stream` | 같은 일을 SSE 로 흘려보낸다 |
 
 ```bash
 curl -s localhost:8086/api/ai/curriculum/roadmap \
   -H 'Content-Type: application/json' \
   -d '{"goal":"백엔드 개발자가 되고 싶다","weeks":8,"hoursPerWeek":15,"level":1}'
 ```
+
+### SSE
+
+재생성까지 가면 30초를 넘긴다. 그동안 화면이 멈춰 보이지 않게 단계를 흘려보낸다.
+
+```
+event: start      예산 20h · 카탈로그 43개
+event: generate   시도 1 · 토큰 in 2800
+event: verify     실패: 기간 초과 40h > 20h
+event: generate   시도 2 · 토큰 in 5600
+event: verify     통과
+event: schedule   2주
+event: result     <비스트리밍 응답과 같은 JSON>
+```
+
+**토큰 단위가 아니라 단계 단위다.** 모델이 JSON 한 덩어리를 뱉으므로 반쯤 온
+JSON 으로는 화면에 그릴 것이 없다. 흘려보낼 값이 있는 건 진행 상황뿐이다.
+
+`result` 의 내용은 비스트리밍 응답과 바이트 단위로 같다. 같은 함수가 만든다.
+
+**오류는 상태 코드로 못 준다.** 한 번 흘려보내기 시작하면 200 이 이미 나갔다.
+그래서 모델 오류는 `event: error` 로 간다.
+
+```
+event: error
+data: {"status": 429, "detail": "쿼터 소진"}
+```
+
+상태 코드로 받고 싶으면 스트리밍 아닌 쪽을 쓴다. 다만 **키가 없는 경우는
+흘려보내기 전에 걸리므로 스트리밍도 503 이 나간다.**
+
+`X-Accel-Buffering: no` 를 붙였다. nginx 가 앞에 있으면 버퍼링 때문에 다 끝난
+뒤 한꺼번에 몰려 나온다. 그러면 스트리밍한 의미가 없다.
+
+**조용한 구간이 최대 한 번의 모델 호출만큼 생긴다.** 호출이 60초를 넘기기
+시작하면 프록시가 끊을 수 있다. 그때는 하트비트(`: ping`)를 넣어야 한다.
+지금은 한 호출이 10~20초라 넣지 않았다.
 
 ### 별도 compose 파일인 이유
 
