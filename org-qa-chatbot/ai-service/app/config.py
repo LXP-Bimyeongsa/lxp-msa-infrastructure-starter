@@ -109,6 +109,18 @@ class Settings:
     def request_timeout_seconds(self) -> float:
         return float(self.get("ai.request-timeout-seconds", 30, env="AI_REQUEST_TIMEOUT"))
 
+    # ── 12번 429 재시도 ────────────────────────────────
+    @property
+    def retry_max_attempts(self) -> int:
+        # run_eval.py의 MAX_RETRIES와 같은 값이어야 평가와 운영의 재시도 정책이
+        # 어긋나지 않는다.
+        return self.get_int("ai.retry.max-attempts", 3, env="AI_RETRY_MAX_ATTEMPTS")
+
+    @property
+    def retry_initial_delay_seconds(self) -> float:
+        return float(
+            self.get("ai.retry.initial-delay-seconds", 2, env="AI_RETRY_INITIAL_DELAY"))
+
     # ── 11번 런타임 청크ID 검증 가드 ──────────────────────
     @property
     def guard_enabled(self) -> bool:
