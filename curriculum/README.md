@@ -34,8 +34,12 @@ curriculum/
   "description": "선언적 트랜잭션, 전파 속성, 프록시가 만드는 함정을 짚는다.",
   "instructorId": 2,
   "estimatedHours": 8,
-  "level": "INTERMEDIATE",
-  "topics": ["백엔드", "스프링", "트랜잭션"],
+  "track": "백엔드",
+  "level": 4,
+  "topics": [
+    "스프링",
+    "트랜잭션"
+  ],
   "videoUploaded": false
 }
 ```
@@ -72,7 +76,7 @@ L3 이다.
 BEGINNER 16 · INTERMEDIATE 19 · ADVANCED 8
 ```
 
-주요 트랙은 백엔드 15, 프론트엔드 8, 인프라 7, 데이터베이스 7이다.
+주요 트랙은 백엔드 15, 프론트엔드 8, 인프라 7, 데이터베이스 6이다. 나머지는 CS기초 4, 협업 3이다.
 
 ### 설계할 때 챙긴 것
 
@@ -585,7 +589,7 @@ docker build -f ${svc}/Dockerfile ...
 ### course-service
 
 **`Course` 엔티티에 필드가 없다.** MongoDB 는 스키마가 없어서 적재는 되지만,
-`course-service` 의 자바 엔티티가 `estimatedHours`·`level`·`topics` 를 모른다.
+`course-service` 의 자바 엔티티가 `estimatedHours`·`level`·`track`·`topics` 를 모른다.
 
 **강의 목록 조회 API 가 없다.** 지금은 단건 조회(`GET /api/courses/{id}`)만 있다.
 로드맵은 전체 목록이 필요하다.
