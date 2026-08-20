@@ -15,6 +15,11 @@
 - **PowerShell에서 `curl`은 `Invoke-WebRequest` 별칭이다.** `curl -i ...`가
   `missing mandatory parameters: Uri`로 죽는다. **요청이 나가지도 않았는데 서버 문제로 보인다**
   → PowerShell에서는 **`curl.exe`**를 쓴다. Git Bash에서는 `curl` 그대로 된다.
+- **Git Bash 에서 `curl -d '{"question":"한글"}'` 은 깨진다.** 서버가
+  `400 There was an error parsing the body` 를 돌려주는데, 본문이 잘못된 게 아니라
+  셸이 인코딩을 바꾼 것이다 → JSON 을 파일에 쓰고 `--data-binary @파일` 로 보낸다.
+- **Windows 파이썬은 Git Bash 의 `/tmp` 를 못 본다.** 윈도우 경로로 해석해서
+  `FileNotFoundError` 가 난다. 임시 파일은 셸 쪽에서 만든다.
 - **서버는 `ai-service/`에서 띄운다.** 저장소 루트에서 `uv run uvicorn`을 하면
   `Failed to spawn: uvicorn. program not found`가 나는데 디렉터리 문제라는 말이 없다.
 

@@ -129,6 +129,27 @@ curl.exe -i http://localhost:8086/api/ai/ping
 uv run ruff check .
 ```
 
+### 질문해 보기
+
+색인이 끝났으면 API 로도 물어볼 수 있다. 한글이 든 JSON 은 파일로 보낸다.
+
+```bash
+uv run uvicorn app.main:app --reload --port 8086
+```
+
+```bash
+curl.exe -X POST http://localhost:8086/api/ai/chat -H "X-Member-Id: 1" -H "Content-Type: application/json" --data-binary @질문.json
+```
+
+`질문.json` 은 이런 모양이다.
+
+```json
+{"question": "청킹할 때 겹침을 왜 두나요", "course_id": "c-04"}
+```
+
+인라인 `-d` 로 한글을 보내면 셸이 인코딩을 바꿔서 `400 There was an error parsing
+the body` 가 난다. 서버 문제로 보이지만 본문이 도착하기 전에 깨진 것이다.
+
 ### 자주 걸리는 것
 
 | 증상 | 원인 | 조치 |
@@ -202,12 +223,12 @@ scripts/                # init_vectorstore.py (S1)
 |---|---|---|
 | ~~S1 색인~~ | 완료. 조각 633개 | |
 | ~~S2 최소 그래프~~ | 완료 | |
-| ~~S3 분기~~ | 완료. `grade` 두 단계 + `no_evidence` | |
-| **S4 루프** | `rewrite` → `retrieve` 순환 + `retry` 상한 | `04_conditional_edges/03_routing_pitfalls.py` |
-| S5 의도·힌트 | `classify` + `route_intent` + `hint` + `visibility` 필터 | 02장 구조화 출력 |
-| S6 가드레일 | 출력 유출 검사 | 없음 |
-| S7 API | `POST /chat` | 11장 `01_fastapi_serving` |
-| S8 체크포인터 | sqlite 체크포인터 + `thread_id` | 10장 `01_checkpointer_persistence` |
+| ~~S3 분기~~ | 완료 | |
+| ~~S4 루프~~ | 완료 | |
+| ~~S5 의도·힌트~~ | 완료 | |
+| ~~S6 가드레일~~ | 완료 | |
+| ~~S7 API~~ | 완료. `POST /api/ai/chat` | |
+| **S8 체크포인터** | sqlite 체크포인터 + `thread_id` | 10장 `01_checkpointer_persistence` |
 | S9 평가 | 15문항 + 지표 계산 | 05장 평가, 11장 `03_observability_eval` |
 
 `03_routing_pitfalls`는 디렉터리가 아니라 `04_conditional_edges/` 안의 파일이다.
