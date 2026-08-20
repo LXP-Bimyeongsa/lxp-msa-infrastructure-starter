@@ -1,0 +1,13 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# 환경변수 / 시크릿
+.env
+*.key
+
+# 로컬 실행 로그 (컨테이너에서는 /logs 볼륨으로 나간다)
+logs/
+*.log

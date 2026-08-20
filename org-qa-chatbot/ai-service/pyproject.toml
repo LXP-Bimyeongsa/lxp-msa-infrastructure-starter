@@ -1,0 +1,23 @@
+[project]
+name = "ai-service"
+version = "0.1.0"
+description = "조직 규정 QA 챗봇 서비스"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    # Consul 등록과 config-server 조회에 쓴다. 동기/비동기 양쪽이 필요해서 httpx를 쓴다.
+    "httpx>=0.28",
+    # /actuator/prometheus 노출. Spring Actuator 자리를 대신한다.
+    "prometheus-client>=0.21",
+    # 규정 문서 front matter 파싱
+    "pyyaml>=6.0",
+    "google-genai>=1.0",
+    # 로컬 실행에서 ai-service/.env 를 읽는다. 컨테이너에는 그 파일이 없어 무영향.
+    "python-dotenv>=1.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+]
