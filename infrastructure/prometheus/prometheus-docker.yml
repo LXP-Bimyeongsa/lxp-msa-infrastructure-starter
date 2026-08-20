@@ -27,6 +27,9 @@ scrape_configs:
           - "payment-service:8085"
           # 비-JVM 서비스지만 경로를 Spring과 같게 맞춰서 이 잡에 그대로 들어간다 (D-69).
           - "ai-service:8086"
+          # 비-JVM 서비스지만 /actuator/prometheus 로 경로를 맞춰 이 잡에 그대로 들어간다.
+          # compose.curriculum.yaml 로 따로 띄우므로 안 떠 있으면 up==0 이 된다.
+          - "curriculum-service:8087"
 
   # ── 인프라 (D-62) ─────────────────────────────────────────
   #
