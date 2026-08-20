@@ -201,6 +201,9 @@ function settle(el){
   el.classList.remove('run');
   if (!el.classList.contains('fail')) el.classList.add('ok');
 }
+// 끊긴 자리. 성공도 실패도 아니므로 초록을 붙이지 않고 점멸만 멈춘다.
+// 안 멈추면 화면이 계속 도는 것처럼 보여서 촬영 중 사고가 사고로 안 보인다.
+function halt(el){ if (el) el.classList.remove('run'); }
 function log(ev, data){
   $('log').innerHTML += '<span class="e">event: ' + esc(ev) + '</span>\n'
     + esc(JSON.stringify(data)) + '\n\n';
@@ -302,17 +305,29 @@ $('run').onclick = async () => {
           settle(running);
           running = addNode('schedule', d.week_count + '주', 'ok');
         } else if (ev === 'result') {
+          settle(running); running = null;   // 여기서 비워야 아래 중단 검사가 안 걸린다
           addNode('END', '', 'ok');
           render(d);
         } else if (ev === 'error') {
+          halt(running); running = null;
           addNode('ERROR', 'HTTP ' + d.status, 'fail', d.detail);
           $('out').innerHTML = '<div class="problems"><div class="t">모델 오류 ' + d.status + '</div>'
             + esc(d.detail) + '</div>';
         }
       }
     }
+    // 스트림이 result 도 error 도 없이 끝났다. 연결이 중간에 끊긴 경우다.
+    if (running) {
+      halt(running);
+      addNode('중단', '', 'fail', '스트림이 끝까지 오지 않았다');
+      $('out').innerHTML = '<div class="problems"><div class="t">중단</div>'
+        + '스트림이 끝까지 오지 않았다. 서버 로그를 본다.</div>';
+    }
   } catch (e) {
+    halt(running);
     addNode('ERROR', '', 'fail', String(e));
+    $('out').innerHTML = '<div class="problems"><div class="t">요청 실패</div>'
+      + esc(String(e)) + '</div>';
   }
   busy(false);
 };
@@ -346,7 +361,10 @@ $('run2').onclick = async () => {
       render(d);
     }
   } catch (e) {
+    halt(first);
     addNode('ERROR', '', 'fail', String(e));
+    $('out').innerHTML = '<div class="problems"><div class="t">요청 실패</div>'
+      + esc(String(e)) + '</div>';
   }
   busy(false);
 };
