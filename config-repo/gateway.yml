@@ -48,6 +48,10 @@ spring:
               uri: lb://payment-service
               predicates:
                 - Path=/api/payments/**
+            - id: ai-service
+              uri: lb://ai-service
+              predicates:
+                - Path=/api/ai/**
 
 # Keycloak 토큰 검증 (D-20)
 keycloak:
