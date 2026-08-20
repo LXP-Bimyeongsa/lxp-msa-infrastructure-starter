@@ -21,6 +21,12 @@ ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:gene
 RETRIABLE = {429, 500, 502, 503, 504}
 
 DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+# 한도가 다 찼을 때 갈아탈 모델 목록. 쉼표로 나눠 적는다.
+# 무료 한도가 "프로젝트 x 모델"당 하루 20건이라, 모델을 바꾸면 20건이 새로 생긴다.
+# 안 주면 DEFAULT_MODEL 하나만 쓴다 — 예전과 같은 동작이다.
+DEFAULT_MODELS = [m.strip() for m in
+                  os.environ.get("GEMINI_MODELS", "").split(",") if m.strip()]
 # 한 번의 HTTP 대기 상한. 아래 deadline 과 함께 요청 전체를 묶는다.
 DEFAULT_TIMEOUT = int(os.environ.get("GEMINI_TIMEOUT_SECONDS", "60"))
 
@@ -38,7 +44,10 @@ class Gemini:
     def __init__(self, api_key=None, model=None, max_attempts=4, temperature=0.2,
                  timeout=None):
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
-        self.model = model or DEFAULT_MODEL
+        # 갈아탈 후보 목록. model 을 직접 주면 그것 하나만 쓴다.
+        self.models = [model] if model else (DEFAULT_MODELS or [DEFAULT_MODEL])
+        # 실제로 답한 모델. 갈아타면 여기가 바뀌고 응답·지표에 그대로 실린다.
+        self.model = self.models[0]
         self.max_attempts = max_attempts
         self.temperature = temperature
         self.timeout = timeout or DEFAULT_TIMEOUT
@@ -53,6 +62,8 @@ class Gemini:
         deadline 은 time.monotonic() 기준 절대 시각이다. 넘기면 재시도를 멈추고,
         남은 시간이 timeout 보다 짧으면 그만큼만 기다린다. 안 주면 예전처럼
         max_attempts 만큼 다 시도한다 — CLI 는 오래 기다려도 되기 때문이다.
+
+        한 모델이 하루 한도를 다 쓰면(429) 다음 모델로 갈아탄다.
         """
         body = json.dumps({
             "contents": [{"parts": [{"text": prompt}]}],
@@ -61,7 +72,25 @@ class Gemini:
                 "temperature": self.temperature,
             },
         }).encode("utf-8")
-        url = ENDPOINT.format(model=self.model)
+
+        last = None
+        for model in self.models:
+            self.model = model          # 여기까지 왔다는 것을 밖에서도 알 수 있게
+            try:
+                return self._call(model, body, deadline)
+            except LLMError as e:
+                last = e
+                # 429 만 갈아탄다. 한도는 모델별로 따로 차기 때문이다.
+                # 5xx 나 네트워크 오류는 모델을 바꿔도 그대로라 여기서 끝낸다.
+                if e.status != 429:
+                    raise
+                if deadline is not None and time.monotonic() >= deadline:
+                    raise
+        raise last
+
+    def _call(self, model, body, deadline):
+        """모델 하나로 부른다. 안에서 재시도까지 한다."""
+        url = ENDPOINT.format(model=model)
         # 키를 쿼리스트링이 아니라 헤더로 보낸다. URL 은 프록시 접근 로그와
         # 예외 메시지에 통째로 남아서, ?key=... 로 두면 키가 로그에 찍힌다.
         headers = {
