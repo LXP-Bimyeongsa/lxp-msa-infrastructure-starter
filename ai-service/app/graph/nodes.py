@@ -61,7 +61,33 @@ def grade(state: TutorState) -> dict:
     return {"graded_ok": verdict.enough}
 
 
-# 3. 근거 부족
+# 3. 질문 재작성
+REWRITE = """학습자 질문을 강의 교안에서 검색하기 좋은 형태로 바꿔라.
+교안에 쓰일 법한 용어와 명사구로 쓰고, 인사말과 군더더기를 뺀다.
+질문의 의도를 바꾸지 말고 답을 짐작해 넣지도 마라.
+바꾼 질의 한 줄만 출력한다.
+
+원래 질문: {question}
+이미 써 본 질의: {tried}"""
+
+
+def rewrite(state: TutorState) -> dict:
+    retry = state.get("retry", 0) + 1
+    try:
+        out = get_llm(temperature=0.3).invoke(
+            REWRITE.format(question=state["question"], tried=state.get("search_query", ""))
+        )
+        # .text 는 속성이다. 메서드로 부르면 지금은 경고만 나지만 곧 깨진다
+        query = out.text.strip()
+    except Exception:
+        # 재작성이 실패해도 retry 는 올린다. 안 올리면 같은 질의로 영원히 돈다
+        return {"retry": retry}
+    # 재작성 결과만 search_query 에 넣는다. question 은 건드리지 않는다.
+    # 답변은 학습자가 실제로 한 질문에 해야 한다
+    return {"search_query": query or state["question"], "retry": retry}
+
+
+# 4. 근거 부족
 def no_evidence(state: TutorState) -> dict:
     # 이 경로에서는 조각을 모델에 넘기지 않는다. 넘기지 않으면 지어낼 재료가 없다.
     # 프롬프트로 "모르면 모른다고 하라"고 부탁하는 것과 다른 지점이 여기다
@@ -76,7 +102,7 @@ def no_evidence(state: TutorState) -> dict:
     }
 
 
-# 4. 답변 생성
+# 5. 답변 생성
 def generate(state: TutorState) -> dict:
     # S2 에서는 모델을 부르지 않고 조각을 그대로 잇는다.
     # 여기에 제대로 된 생성을 먼저 붙이면 검색이 빗나가도 답이 그럴듯해서

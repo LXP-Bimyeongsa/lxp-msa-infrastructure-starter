@@ -5,8 +5,8 @@ app/graph/builder.py: 그래프 조립
 → scripts/ask.py 가 부른다. 나중에 app/api/endpoints.py 도 부른다
 확인: 질문 하나를 넣으면 answer 와 citations 가 채워져 나온다
 
-지금은 분기 하나까지다. 재검색 루프(S4)는 route_grade 에 갈래를 하나 더해서 붙인다.
-한 번에 붙이지 않는 이유는 답이 이상할 때 분기 탓인지 루프 탓인지 가리기 위해서다.
+rewrite 가 retrieve 로 되돌아가는 순환이 하나 있다. 끝나는 조건은 route_grade 의
+retry 상한이고, recursion_limit 은 그것이 안 먹었을 때를 위한 안전장치다.
 
 generate 와 no_evidence 는 END 로 곧장 닫는다. 판정 노드로 되돌아가게 두면
 같은 조건이 다시 참이 되어 같은 일을 반복한다
@@ -17,7 +17,7 @@ from functools import lru_cache
 from langgraph.graph import END, START, StateGraph
 
 from app.graph.edges import route_grade
-from app.graph.nodes import generate, grade, no_evidence, retrieve
+from app.graph.nodes import generate, grade, no_evidence, retrieve, rewrite
 from app.graph.state import TutorState
 
 
@@ -27,6 +27,7 @@ def build_graph():
     g.add_node("retrieve", retrieve)
     g.add_node("grade", grade)
     g.add_node("generate", generate)
+    g.add_node("rewrite", rewrite)
     g.add_node("no_evidence", no_evidence)
 
     g.add_edge(START, "retrieve")
@@ -36,8 +37,9 @@ def build_graph():
     g.add_conditional_edges(
         "grade",
         route_grade,
-        {"generate": "generate", "no_evidence": "no_evidence"},
+        {"generate": "generate", "rewrite": "rewrite", "no_evidence": "no_evidence"},
     )
+    g.add_edge("rewrite", "retrieve")
     g.add_edge("generate", END)
     g.add_edge("no_evidence", END)
     return g.compile()

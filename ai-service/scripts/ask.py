@@ -38,6 +38,7 @@ def main() -> None:
     print(f"top_score  : {state['top_score']:.3f}")
     print(f"검색 질의  : {state['search_query']}")
     print(f"판정       : {'충분' if state.get('graded_ok') else '부족'}")
+    print(f"재검색     : {state.get('retry', 0)}회")
     print(f"인용 조각  : {len(state['citations'])}개")
     for c in state["citations"]:
         print(f"  {c['score']:.3f}  {c['source_path']}#{c['seq']}")
