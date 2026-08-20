@@ -30,10 +30,14 @@ def run_one(graph, row: dict) -> dict:
     # 문항마다 새 thread_id 를 쓴다. 고정 값을 쓰면 체크포인터에 남은 지난 실행이
     # 이어져 재현이 안 된다
     started = time.monotonic()
-    state = graph.invoke(
-        new_turn(row["question"], row.get("courseId")),
-        {"configurable": {"thread_id": uuid4().hex[:8]}, "recursion_limit": RECURSION_LIMIT},
-    )
+    config = {"configurable": {"thread_id": uuid4().hex[:8]}, "recursion_limit": RECURSION_LIMIT}
+
+    # turns 가 있으면 같은 스레드에서 차례로 묻고 마지막 턴을 채점한다.
+    # 단계적 유도는 첫 질문이 정상이라 분류를 통과하고, 두 번째가 앞 맥락을 타고
+    # 들어온다. 3단계 문서가 가장 잘 뚫린다고 지목한 유형이다
+    turns = row.get("turns") or [row["question"]]
+    for q in turns:
+        state = graph.invoke(new_turn(q, row.get("courseId")), config)
     answer = state.get("answer", "")
     sources = [c["source_path"] for c in state.get("citations", [])]
     return {
