@@ -400,7 +400,8 @@ API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은
 
 | | |
 |---|---|
-| `GET /actuator/health` | compose healthcheck 와 Prometheus 스크레이프 |
+| `GET /actuator/health` | compose healthcheck 와 Consul |
+| `GET /actuator/prometheus` | 지표 스크레이프 (D-62) |
 | `GET /api/ai/curriculum/catalog` | 고를 수 있는 강의 목록 |
 | `POST /api/ai/curriculum/roadmap` | 로드맵 생성 |
 | `POST /api/ai/curriculum/roadmap/stream` | 같은 일을 SSE 로 흘려보낸다 |
@@ -447,6 +448,38 @@ data: {"status": 429, "detail": "쿼터 소진"}
 **조용한 구간이 최대 한 번의 모델 호출만큼 생긴다.** 호출이 60초를 넘기기
 시작하면 프록시가 끊을 수 있다. 그때는 하트비트(`: ping`)를 넣어야 한다.
 지금은 한 호출이 10~20초라 넣지 않았다.
+
+### 지표
+
+무엇을 재는가 — 이 서비스에서 흥미로운 건 응답 시간이 아니라 **첫 시도에
+통과했는가**다. 검증에 걸려 재생성하면 결국 통과는 하지만 호출이 늘어 쿼터와
+지연을 먹는다.
+
+```
+curriculum_roadmap_requests_total{outcome="ok"|"quota"|"model_error"|"unavailable"}
+curriculum_roadmap_first_try_total      재생성 없이 통과한 요청
+curriculum_roadmap_llm_calls_total      모델 호출 수 (재생성 포함)
+curriculum_roadmap_unresolved_total     재생성을 다 쓰고도 문제가 남은 요청
+curriculum_roadmap_duration_seconds     히스토그램
+curriculum_llm_tokens_total{direction=} 토큰
+curriculum_catalog_courses              기동할 때 읽은 강의 수
+```
+
+**첫 시도 통과율 = `first_try_total / requests_total{outcome="ok"}`.**
+지금까지 이 숫자는 평가 러너를 손으로 돌려야만 나왔다. 이제 실사용에서도 보인다.
+
+히스토그램 버킷을 1~120초로 잡았다. 기본 버킷은 상한이 10초라 모델 호출
+한 번(10~20초)이 전부 `+Inf` 로 몰린다.
+
+`unresolved_total` 이 오르면 프롬프트를 봐야 한다는 신호다. 재생성을 다 쓰고도
+검증이 안 풀린 요청이다.
+
+경로와 라이브러리를 `ai-service` 와 같게 뒀다(`/actuator/prometheus`,
+`prometheus-client`). Consul 헬스체크 경로와 prometheus 잡 설정이 전역이라
+서비스마다 다르게 두면 두 곳을 다 고쳐야 한다.
+
+**스크레이프 등록은 아직 안 했다.** `infrastructure/prometheus/` 를 건드려야 해서
+5단계로 미뤘다.
 
 ### 별도 compose 파일인 이유
 
