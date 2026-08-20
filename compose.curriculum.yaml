@@ -32,6 +32,8 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       # 모델 교체 지점. 무료에서 유료로 갈 때 여기만 바꾼다.
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      # 한도가 찼을 때 갈아탈 목록. 비우면 위 한 개만 쓴다.
+      GEMINI_MODELS: ${GEMINI_MODELS:-}
       # 검증 실패 시 재생성 포함 최대 호출 횟수.
       # 늘리면 통과율이 오르고 쿼터를 더 먹는다. 무료 한도가 하루 20건이다.
       ROADMAP_MAX_ATTEMPTS: ${ROADMAP_MAX_ATTEMPTS:-3}
