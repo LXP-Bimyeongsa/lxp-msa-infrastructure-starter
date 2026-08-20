@@ -20,6 +20,7 @@ for 문으로도 같은 흐름이 돈다. 묶은 이유는 사이클 자체가 �
 날 상태는 직렬화 대상이 되는데, 소켓을 쥔 객체와 콜백은 직렬화가 안 된다.
 """
 
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, TypedDict
 
@@ -56,6 +57,7 @@ class State(TypedDict, total=False):
     hours_per_week: int
     level: int
     max_attempts: int
+    deadline: float | None
     # 돌면서 쌓이는 것
     feedback: str | None
     attempts: int
@@ -84,7 +86,7 @@ def generate(state: State, config) -> dict:
         state["weeks"], state["hours_per_week"], state["level"],
         state.get("feedback"),
     )
-    payload, usage = llm.generate(text)
+    payload, usage = llm.generate(text, deadline=state.get("deadline"))
     return {
         "goal_summary": payload.get("goal_summary", ""),
         "selected": payload.get("selected", []),
@@ -122,6 +124,9 @@ def route(state: State) -> str:
         return "schedule"
     if state["attempts"] >= state["max_attempts"]:
         return "schedule"
+    if state.get("deadline") and time.monotonic() >= state["deadline"]:
+        # 재생성할 시간이 없다. 지금까지 고른 것으로 내보낸다.
+        return "schedule"
     return "generate"
 
 
@@ -141,7 +146,8 @@ def _compile():
 GRAPH = _compile()
 
 
-def _inputs(courses, goal, weeks, hours_per_week, level, max_attempts):
+def _inputs(courses, goal, weeks, hours_per_week, level, max_attempts,
+            deadline_seconds=None):
     # 서비스는 pydantic 이 막지만 CLI 와 평가 러너는 안 막는다.
     # hours_per_week 가 0 이면 pack_weeks 가 한 주에 0시간씩 담아 무한루프가 된다.
     for name, v in (("weeks", weeks), ("hours_per_week", hours_per_week),
@@ -154,6 +160,8 @@ def _inputs(courses, goal, weeks, hours_per_week, level, max_attempts):
         "weeks": weeks, "hours_per_week": hours_per_week, "level": level,
         "max_attempts": max_attempts,
         "feedback": None, "attempts": 0, "tok_in": 0, "tok_out": 0,
+        # 요청 하나가 쓸 수 있는 전체 시간. 안 주면 제한이 없다.
+        "deadline": (time.monotonic() + deadline_seconds) if deadline_seconds else None,
     }
 
 
@@ -184,18 +192,20 @@ def _result(final, courses, budget) -> Result:
 
 
 def build(courses, llm, goal, weeks, hours_per_week, level,
-          max_attempts=3, on_retry=None) -> Result:
+          max_attempts=3, on_retry=None, deadline_seconds=None) -> Result:
     """검증이 통과할 때까지 재생성한다.
 
     attempts 가 1 이면 첫 시도에 통과했다는 뜻이고, 이 값이 프롬프트 품질 지표다.
     루프가 있으면 결국 통과하지만 호출이 늘면 쿼터와 지연을 먹는다.
     """
-    budget, state = _inputs(courses, goal, weeks, hours_per_week, level, max_attempts)
+    budget, state = _inputs(courses, goal, weeks, hours_per_week, level,
+                            max_attempts, deadline_seconds)
     final = GRAPH.invoke(state, config=_config(llm, on_retry, max_attempts))
     return _result(final, courses, budget)
 
 
-def stream(courses, llm, goal, weeks, hours_per_week, level, max_attempts=3):
+def stream(courses, llm, goal, weeks, hours_per_week, level, max_attempts=3,
+           deadline_seconds=None):
     """build() 와 같은 일을 하되 노드가 끝날 때마다 진행 상황을 내보낸다.
 
     yield 는 (종류, 내용) 이다. 마지막 한 번만 종류가 "result" 이고 Result 가 온다.
@@ -211,7 +221,8 @@ def stream(courses, llm, goal, weeks, hours_per_week, level, max_attempts=3):
     반쯤 온 JSON 으로는 화면에 그릴 게 없다. 그래서 단계만 내보낸다.
     쓸모는 재생성이 도는 동안 화면이 멈춰 보이지 않게 하는 것이다.
     """
-    budget, state = _inputs(courses, goal, weeks, hours_per_week, level, max_attempts)
+    budget, state = _inputs(courses, goal, weeks, hours_per_week, level,
+                            max_attempts, deadline_seconds)
     final = None
 
     for mode, chunk in GRAPH.stream(

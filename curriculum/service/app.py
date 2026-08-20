@@ -52,6 +52,11 @@ def _max_attempts():
 
 MAX_ATTEMPTS = _max_attempts()
 
+# 요청 하나가 쓸 수 있는 전체 시간. 안 걸면 재생성 3회 x 재시도 4회 x 대기라
+# 한 요청이 25분까지 갈 수 있다. gateway 와 브라우저는 그 전에 끊는데,
+# 서버는 그것도 모르고 계속 모델을 부른다 — 쿼터만 태운다.
+DEADLINE_SECONDS = int(os.environ.get("ROADMAP_DEADLINE_SECONDS", "180"))
+
 metrics.CATALOG.set(len(COURSES))
 
 
@@ -123,7 +128,8 @@ def create_roadmap(req: RoadmapRequest):
     started = time.perf_counter()
     try:
         r = roadmap.build(COURSES, llm, req.goal, req.weeks,
-                          req.hoursPerWeek, req.level, MAX_ATTEMPTS)
+                          req.hoursPerWeek, req.level, MAX_ATTEMPTS,
+                          deadline_seconds=DEADLINE_SECONDS)
     except roadmap.LLMError as e:
         metrics.record_error(e.status)
         # 429 는 무료 티어 한도라 잠시 뒤 다시 부르면 된다. 그대로 내려보낸다.
@@ -200,6 +206,7 @@ def stream_roadmap(req: RoadmapRequest):
             for kind, data in roadmap.stream(
                 COURSES, llm, req.goal, req.weeks,
                 req.hoursPerWeek, req.level, MAX_ATTEMPTS,
+                deadline_seconds=DEADLINE_SECONDS,
             ):
                 if kind == "result":
                     metrics.record(data, time.perf_counter() - started)
