@@ -109,6 +109,18 @@ class Settings:
     def request_timeout_seconds(self) -> float:
         return float(self.get("ai.request-timeout-seconds", 30, env="AI_REQUEST_TIMEOUT"))
 
+    # ── 11번 런타임 청크ID 검증 가드 ──────────────────────
+    @property
+    def guard_enabled(self) -> bool:
+        return str(self.get("ai.guard.enabled", True)).strip().lower() not in ("false", "0")
+
+    @property
+    def guard_regenerate_attempts(self) -> int:
+        # 재생성도 실 API 호출이라 무료 티어 하루 500요청을 태운다. 값을 늘릴수록
+        # 유령 청크ID 한 건이 여러 요청을 잡아먹으므로 기본값을 낮게 둔다.
+        return self.get_int(
+            "ai.guard.regenerate-attempts", 1, env="AI_GUARD_REGENERATE_ATTEMPTS")
+
 
 def fetch_remote(profile: str = "default") -> dict[str, object]:
     """config-server에서 설정을 읽어 평평한 dict로 만든다. 실패하면 빈 dict."""

@@ -32,6 +32,10 @@ LATENCY = Histogram(
 )
 # 실존하지 않는 청크ID 인용 횟수. 11번 검증 가드의 실패율 지표가 된다.
 GHOST_CITATIONS = Counter("ai_ghost_citations_total", "규정에 없는 청크ID를 인용한 횟수")
+# 11번 재생성 가드가 실제로 문제를 고치는지 관측한다. recovered=재생성 후 정상,
+# exhausted=재생성 시도를 다 썼는데도 유령 청크ID가 남음.
+REGENERATE = Counter(
+    "ai_chat_regenerate_total", "유령 청크ID로 인한 재생성 시도 결과", ["outcome"])
 
 
 class ChatRequest(BaseModel):
@@ -128,12 +132,27 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
             detail="답변 준비가 되지 않았습니다. 잠시 후 다시 시도해주세요.",
         )
 
+    prompt = build_prompt(req.question, regs.context)
+    # 가드가 꺼져 있으면 그냥 1회 호출이다(9·10번 단계와 동일 동작).
+    max_attempts = 1 + settings.guard_regenerate_attempts if settings.guard_enabled else 1
+
     started = time.perf_counter()
     try:
         # 13번에서 이 자리를 SSE 스트리밍으로 바꾼다. provider 시그니처는 이미
-        # 스트리밍이므로 라우터만 고치면 되고 인터페이스는 그대로다.
-        raw = await collect(provider, SYSTEM_INSTRUCTION,
-                            build_prompt(req.question, regs.context))
+        # 스트리밍이므로 라우터만 고치면 되고 인터페이스는 그대로다. 재생성도
+        # 같은 자리에서 반복 호출로 처리한다.
+        #
+        # 동일 프롬프트로 그대로 재시도한다. 힌트를 덧붙이면 매 시도마다 프롬프트가
+        # 달라져 고정 접두사 캐싱 전제가 깨진다.
+        for attempt in range(1, max_attempts + 1):
+            raw = await collect(provider, SYSTEM_INSTRUCTION, prompt)
+            citations, references, body = split_answer(raw)
+            unknown = [c for c in citations + references if c not in regs.chunk_ids]
+            if not unknown or attempt == max_attempts:
+                break
+            log.warning(
+                "실존하지 않는 청크ID 인용, 재생성 시도 %d/%d: %s (질문: %s)",
+                attempt, max_attempts - 1, unknown, req.question[:40])
     except ProviderError as e:
         REQUESTS.labels(outcome=f"error_{e.status}").inc()
         # 429는 12번에서 재시도와 폴백 문구를 붙인다.
@@ -144,18 +163,18 @@ async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     finally:
         LATENCY.observe(time.perf_counter() - started)
 
-    citations, references, body = split_answer(raw)
-
-    # 11번 런타임 검증 가드를 이 자리에 넣는다. 지금은 실존하지 않는 청크ID를
-    # 세기만 하고 재생성하지 않는다. 60문항 실측에서 인용 102건 중 1건이
-    # 존재하지 않는 ID였으므로(E025가 PAY-003-012를 인용, PAY-003은 청크 9개)
-    # 감지는 지금부터 해두고 대응은 11번에서 붙인다.
-    unknown = [c for c in citations + references if c not in regs.chunk_ids]
+    # 60문항 실측에서 인용 102건 중 1건이 존재하지 않는 ID였다(E025가
+    # PAY-003-012를 인용, PAY-003은 청크 9개).
     warning = None
     if unknown:
         GHOST_CITATIONS.inc(len(unknown))
         warning = "일부 근거를 규정에서 확인하지 못했습니다. 운영진에게 확인해주세요."
-        log.warning("실존하지 않는 청크ID 인용: %s (질문: %s)", unknown, req.question[:40])
+        log.warning("실존하지 않는 청크ID 인용 (재생성 소진): %s (질문: %s)",
+                    unknown, req.question[:40])
+        if max_attempts > 1:
+            REGENERATE.labels(outcome="exhausted").inc()
+    elif max_attempts > 1 and attempt > 1:
+        REGENERATE.labels(outcome="recovered").inc()
 
     REQUESTS.labels(outcome="ok").inc()
     return ChatResponse(answer=body or raw, citations=citations,

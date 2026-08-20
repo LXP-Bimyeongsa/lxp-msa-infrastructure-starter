@@ -21,3 +21,9 @@ dependencies = [
 dev = [
     "pytest>=8.3",
 ]
+
+[tool.pytest.ini_options]
+# app/ 은 배포 이미지에 패키지로 설치되지 않는다(Dockerfile이 --no-install-project로
+# 의존성만 넣고 COPY로 소스를 얹는다). 테스트에서 `from app import ...`가 되려면
+# 저장소 경로가 아니라 이 디렉터리를 sys.path에 넣어야 한다.
+pythonpath = ["."]
