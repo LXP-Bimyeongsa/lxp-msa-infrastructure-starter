@@ -99,7 +99,13 @@ def main():
     p.add_argument("--model", default=None)
     p.add_argument("--verbose", action="store_true", help="선택된 강의까지 출력")
     p.add_argument("--sleep", type=float, default=7.0, help="케이스 사이 대기 초")
-    p.add_argument("--max-attempts", type=int, default=3,
+    def positive(v):
+        n = int(v)
+        if n < 1:
+            raise argparse.ArgumentTypeError(f"1 이상이어야 한다: {v}")
+        return n
+
+    p.add_argument("--max-attempts", type=positive, default=3,
                    help="검증 실패 시 재생성 포함 최대 호출 횟수. 1 이면 루프 없음")
     args = p.parse_args()
 

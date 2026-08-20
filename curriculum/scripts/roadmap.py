@@ -25,12 +25,18 @@ from curriculum import roadmap  # noqa: E402
 def main():
     p = argparse.ArgumentParser(description="커리큘럼 로드맵 CLI")
     p.add_argument("--goal", required=True, help='예: "백엔드 개발자가 되고 싶다"')
-    p.add_argument("--weeks", type=int, default=26)
-    p.add_argument("--hours-per-week", type=int, default=20)
+    def positive(v):
+        n = int(v)
+        if n < 1:
+            raise argparse.ArgumentTypeError(f"1 이상이어야 한다: {v}")
+        return n
+
+    p.add_argument("--weeks", type=positive, default=26)
+    p.add_argument("--hours-per-week", type=positive, default=20)
     p.add_argument("--level", type=int, default=1, choices=[1, 2, 3, 4, 5],
                    help="현재 수준. 1 완전입문 · 2 기초 · 3 중급 · 4 중상급 · 5 고급")
     p.add_argument("--model", default=None)
-    p.add_argument("--max-attempts", type=int, default=3,
+    p.add_argument("--max-attempts", type=positive, default=3,
                    help="검증 실패 시 재생성 포함 최대 호출 횟수")
     args = p.parse_args()
 
