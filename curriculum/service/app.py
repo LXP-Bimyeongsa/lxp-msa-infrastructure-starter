@@ -4,7 +4,8 @@
 CLI(`scripts/roadmap.py`)와 평가 러너가 같은 패키지를 쓰므로 동작이 갈리지 않는다.
 
 엔드포인트
-    GET  /actuator/health   Prometheus 스크레이프와 compose healthcheck 용
+    GET  /actuator/health       compose healthcheck 와 Consul
+    GET  /actuator/prometheus   지표 스크레이프 (D-62)
     GET  /api/ai/curriculum/catalog
     POST /api/ai/curriculum/roadmap
     POST /api/ai/curriculum/roadmap/stream   같은 일을 SSE 로 흘려보낸다
@@ -15,14 +16,17 @@ gateway 를 거쳐 들어오는 것을 전제한다. 서비스 토큰 검증(D-3
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from curriculum import roadmap  # noqa: E402
+from curriculum.service import metrics  # noqa: E402
 
 app = FastAPI(title="curriculum-roadmap", version="0.1.0")
 
@@ -31,6 +35,8 @@ app = FastAPI(title="curriculum-roadmap", version="0.1.0")
 COURSES = roadmap.load_courses()
 
 MAX_ATTEMPTS = int(os.environ.get("ROADMAP_MAX_ATTEMPTS", "3"))
+
+metrics.CATALOG.set(len(COURSES))
 
 
 class RoadmapRequest(BaseModel):
@@ -77,6 +83,13 @@ def health():
     return {"status": "UP", "courses": len(COURSES)}
 
 
+@app.get("/actuator/prometheus")
+def prometheus():
+    """ai-service 와 같은 경로를 쓴다. prometheus 잡 설정이 전역이라 다르게 두면
+    스크레이프 설정을 서비스마다 나눠야 한다."""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
 @app.get("/api/ai/curriculum/catalog")
 def catalog():
     """로드맵이 고를 수 있는 강의 목록. 화면에서 트랙·난이도를 보여줄 때 쓴다."""
@@ -88,16 +101,20 @@ def create_roadmap(req: RoadmapRequest):
     try:
         llm = roadmap.Gemini()
     except roadmap.LLMError as e:
+        metrics.REQUESTS.labels(outcome="unavailable").inc()
         raise HTTPException(status_code=503, detail=f"모델을 부를 수 없다: {e.detail}")
 
+    started = time.perf_counter()
     try:
         r = roadmap.build(COURSES, llm, req.goal, req.weeks,
                           req.hoursPerWeek, req.level, MAX_ATTEMPTS)
     except roadmap.LLMError as e:
+        metrics.record_error(e.status)
         # 429 는 무료 티어 한도라 잠시 뒤 다시 부르면 된다. 그대로 내려보낸다.
         status = 429 if e.status == 429 else 502
         raise HTTPException(status_code=status, detail=e.detail[:500])
 
+    metrics.record(r, time.perf_counter() - started)
     return to_response(r)
 
 
@@ -151,9 +168,11 @@ def stream_roadmap(req: RoadmapRequest):
     try:
         llm = roadmap.Gemini()
     except roadmap.LLMError as e:
+        metrics.REQUESTS.labels(outcome="unavailable").inc()
         raise HTTPException(status_code=503, detail=f"모델을 부를 수 없다: {e.detail}")
 
     def events():
+        started = time.perf_counter()
         yield sse("start", {
             "goal": req.goal,
             "budgetHours": req.weeks * req.hoursPerWeek,
@@ -167,10 +186,12 @@ def stream_roadmap(req: RoadmapRequest):
                 req.hoursPerWeek, req.level, MAX_ATTEMPTS,
             ):
                 if kind == "result":
+                    metrics.record(data, time.perf_counter() - started)
                     yield sse("result", to_response(data).model_dump())
                 else:
                     yield sse(kind, data)
         except roadmap.LLMError as e:
+            metrics.record_error(e.status)
             # 429 는 무료 티어 한도라 잠시 뒤 다시 부르면 된다.
             yield sse("error", {"status": e.status, "detail": e.detail[:500]})
 
