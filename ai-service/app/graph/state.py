@@ -31,6 +31,7 @@ class TutorState(TypedDict, total=False):
     search_query: str
     chunks: list[dict]
     top_score: float
+    graded_ok: bool  # grade 판정 결과. route_grade 가 이것만 본다
     retry: int  # 이 필드가 없으면 재검색 루프가 끝나지 않는다
 
     # 출력

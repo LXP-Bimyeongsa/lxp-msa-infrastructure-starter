@@ -6,6 +6,9 @@ app/graph/nodes.py: 그래프 노드
 확인: retrieve 가 chunks 와 top_score 를 채우고, generate 가 answer 를 만든다
 """
 
+from pydantic import BaseModel, Field
+
+from app.core.config import MIN_SCORE, get_llm
 from app.graph.state import TutorState
 from app.tools.rag import search
 
@@ -22,7 +25,58 @@ def retrieve(state: TutorState) -> dict:
     }
 
 
-# 2. 답변 생성
+# 2. 품질 판정
+class Verdict(BaseModel):
+    enough: bool = Field(description="주어진 자료만으로 질문에 답할 수 있으면 true")
+    reason: str = Field(description="한 문장 근거")
+
+
+JUDGE = """너는 검색 결과가 질문에 답할 내용을 담고 있는지만 판정한다.
+답을 만들지 말고 자료에 답이 들어 있는지만 본다.
+질문이 다루는 주제를 언급만 하고 설명하지 않는 자료는 부족으로 본다.
+
+질문: {question}
+
+자료:
+{context}"""
+
+
+def grade(state: TutorState) -> dict:
+    chunks = state.get("chunks", [])
+
+    # 1단계는 점수다. 계산만 하니 비용이 없다.
+    # 여기서 걸리면 2단계를 안 돌린다. 반대로 하면 명백히 실패한 검색에도 판정 비용이 나간다
+    if not chunks or state.get("top_score", 0.0) < MIN_SCORE:
+        return {"graded_ok": False}
+
+    # 2단계는 내용이다. 점수는 넘었지만 실제로 답할 내용이 있는지 본다.
+    # 같은 용어를 많이 쓰지만 다른 이야기를 하는 조각이 상위에 오는 경우가 여기서 걸린다
+    context = "\n\n".join(c["text"][:600] for c in chunks)
+    judge = get_llm().with_structured_output(Verdict)
+    try:
+        verdict = judge.invoke(JUDGE.format(question=state["question"], context=context))
+    except Exception:
+        # 판정에 실패하면 충분하다고 보지 않는다. 모름 응답이 반쪽 답변보다 낫다
+        return {"graded_ok": False}
+    return {"graded_ok": verdict.enough}
+
+
+# 3. 근거 부족
+def no_evidence(state: TutorState) -> dict:
+    # 이 경로에서는 조각을 모델에 넘기지 않는다. 넘기지 않으면 지어낼 재료가 없다.
+    # 프롬프트로 "모르면 모른다고 하라"고 부탁하는 것과 다른 지점이 여기다
+    course = state.get("course_id") or "이 강의"
+    return {
+        "answer": (
+            f"{course} 내용에서는 이 질문에 답할 근거를 찾지 못했다. "
+            "강의에서 다루지 않는 내용일 수 있다. 강사에게 문의하는 것을 권한다."
+        ),
+        "citations": [],
+        "route": "NO_EVIDENCE",
+    }
+
+
+# 4. 답변 생성
 def generate(state: TutorState) -> dict:
     # S2 에서는 모델을 부르지 않고 조각을 그대로 잇는다.
     # 여기에 제대로 된 생성을 먼저 붙이면 검색이 빗나가도 답이 그럴듯해서
