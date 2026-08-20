@@ -34,8 +34,18 @@ GEMINI_MODEL=gemini-3.1-flash-lite
 ```
 
 키는 [Google AI Studio](https://aistudio.google.com/apikey)에서 무료로 받는다.
-`GEMINI_MODEL` 을 안 주면 `gemini-2.5-flash` 를 쓰는데, 무료 한도가 **모델별로 하루 20건**이라
-남이 이미 다 썼을 수 있다. 그럴 땐 다른 모델 이름을 넣으면 된다.
+무료 한도가 **모델별로 하루 20건**이라 다 쓰면 `GEMINI_MODEL` 만 다른 이름으로 바꾼다.
+코드도 이미지도 안 건드리고 `up -d` 만 다시 하면 된다.
+
+**지금 어느 모델로 도는지는 세 곳에서 본다.**
+
+```text
+화면 오른쪽 위 배지
+GET /actuator/health      {"model": "..."}
+로드맵 응답의 model 필드
+```
+
+모델이 바뀌면 같은 입력에도 결과가 달라진다. 그래서 기록을 남긴다.
 
 내릴 때는 이렇게 한다. 메인 스택은 안 건드린다.
 
@@ -66,17 +76,21 @@ docker compose -f compose.curriculum.yaml down
 
 "40+25가 65인가"를 모델에게 묻지 않는다. 판정이 흔들리고 토큰만 쓴다.
 
-4번의 되돌아가는 부분이 **LangGraph** 로 묶여 있다. 화면 가운데 칸에서 실제로 도는 게 보인다.
+4번의 되돌아가는 부분이 **LangGraph** 로 묶여 있다. 화면 오른쪽에서 실제로 도는 게 보인다.
 
-```
-generate  시도 1
-verify    실패 · 기간 초과 65h > 40h      ← 빨강
-  ↺ generate 로 되돌아간다                ← 노랑
-generate  시도 2
-verify    통과                            ← 초록
+```text
+✓ 목표를 읽었어요           강의 43개 중에서 골라요
+✓ 강의를 고르는 중이에요
+⚠ 시간이 넘어서 다시 골라요   40시간이라 20시간을 넘어요
+✓ 다시 고르는 중이에요        2번째 시도예요
+✓ 일정이 맞는지 확인했어요
+✓ 주차별로 나눴어요           2주 계획
 ```
 
 `2주 × 10h` 로 넣으면 예산이 빠듯해서 이게 잘 걸린다.
+
+화면은 사용자가 읽을 말로 쓴다. `generate`·`verify` 같은 내부 이름과 서버가 보낸
+원본 이벤트는 아래 **"서버가 보낸 원본 기록"** 을 펼치면 나온다.
 
 ---
 
@@ -96,7 +110,7 @@ curriculum/
   service/
     app.py       243  HTTP 경계. 로직은 없다
     metrics.py    73  프로메테우스 지표
-    static/           촬영용 화면 (HTML 한 장)
+    static/           화면 (HTML 한 장, 빌드 도구 없음)
   scripts/
     roadmap.py    95  터미널에서 돌려보는 CLI
     evaluate.py  174  평가셋 8케이스 자동 채점
@@ -209,7 +223,7 @@ curl -s -X POST localhost:8087/api/ai/curriculum/roadmap \
 | gateway 라우팅 | 라우트가 전부 `lb://` 라 Consul 등록이 먼저다. `ai-service` 가 같은 문제를 이미 풀어서 두 벌 만들지 않고 미뤘다 |
 | LangSmith 트레이스 | 패키지와 환경변수는 있는데 **키가 없어서 꺼져 있다.** 키만 넣으면 코드 변경 없이 켜진다 |
 | Jenkins | 파이프라인이 `./gradlew` 전용이라 파이썬 서비스를 넣으면 깨진다 |
-| 실사용 화면 | 지금 있는 건 촬영용 콘솔이다. 실제 화면은 `frontend/client` 에 붙인다 |
+| 화면을 gateway 뒤로 | 지금은 서비스가 직접 준다. CORS 를 피하려고 그랬다. gateway 라우팅이 붙으면 `frontend/client` 로 옮긴다 |
 | `course-service` 연동 | 엔티티에 `estimatedHours`·`level`·`track` 이 없고 목록 API 도 없다. 지금은 JSON 을 직접 읽어 우회한다 |
 
 **LangChain 은 안 쓴다.** `langchain-core` 가 깔려 있지만 `langgraph` 가 끌고 온 것이고

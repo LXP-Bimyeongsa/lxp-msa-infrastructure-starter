@@ -418,7 +418,7 @@ API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은
 | | |
 |---|---|
 | `GET /` | 촬영용 데모 콘솔 |
-| `GET /actuator/health` | compose healthcheck 와 Consul |
+| `GET /actuator/health` | compose healthcheck · Consul · **지금 쓰는 모델 확인** |
 | `GET /actuator/prometheus` | 지표 스크레이프 (D-62) |
 | `GET /api/ai/curriculum/catalog` | 고를 수 있는 강의 목록 |
 | `POST /api/ai/curriculum/roadmap` | 로드맵 생성 |
@@ -538,7 +538,7 @@ CLI 는 예산을 안 건다. 오래 기다려도 되기 때문이다.
 지연을 먹는다.
 
 ```
-curriculum_roadmap_requests_total{outcome="ok"|"quota"|"model_error"|"unavailable"}
+curriculum_roadmap_requests_total{outcome=..., model=...}
 curriculum_roadmap_first_try_total      재생성 없이 통과한 요청
 curriculum_roadmap_llm_calls_total      모델 호출 수 (재생성 포함)
 curriculum_roadmap_unresolved_total     재생성을 다 쓰고도 문제가 남은 요청
@@ -548,6 +548,9 @@ curriculum_catalog_courses              기동할 때 읽은 강의 수
 ```
 
 **첫 시도 통과율 = `first_try_total / requests_total{outcome="ok"}`.**
+
+`model` 라벨을 붙였다. 무료 한도가 모델별이라 갈아끼우며 쓰는데, 어느 모델이 답했는지
+안 남기면 결과가 흔들려도 원인을 못 찾는다. 응답과 `/actuator/health` 에도 같이 실린다.
 지금까지 이 숫자는 평가 러너를 손으로 돌려야만 나왔다. 이제 실사용에서도 보인다.
 
 히스토그램 버킷을 1~120초로 잡았다. 기본 버킷은 상한이 10초라 모델 호출
