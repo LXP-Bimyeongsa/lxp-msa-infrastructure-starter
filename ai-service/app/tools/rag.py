@@ -73,8 +73,13 @@ def course_outline(course_id: str | None) -> str:
     if not course_id:
         return "(강의가 지정되지 않음)"
     got = get_store().get(where=learner_filter(course_id), include=["metadatas"])
-    paths = sorted({m["source_path"] for m in got["metadatas"]})
-    if not paths:
+    # 경로만 주면 한국어 질문과 영문 슬러그가 이어지지 않는다. 실제로 "대화가
+    # 길어지면 앞부분을 어떻게 줄이나요" 가 02-memory-strategies.md 와 연결되지
+    # 않아 범위 밖으로 밀렸다. 제목을 같이 준다 (AI-07)
+    items = sorted(
+        {(m["source_path"], m.get("title") or m["source_path"]) for m in got["metadatas"]}
+    )
+    if not items:
         return "(이 강의의 자료가 없음)"
-    # 파일 경로가 곧 주제 목록이다. 임베딩을 부르지 않으므로 비용이 없다
-    return "\n".join(f"- {p}" for p in paths)
+    # 임베딩을 부르지 않으므로 비용이 없다
+    return "\n".join(f"- {t}  ({p})" for p, t in items)

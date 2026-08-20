@@ -163,13 +163,17 @@ def load_file(path: Path) -> tuple[list[str], list[dict], list[str]]:
     version = int(meta.get("version", 1))
     source_path = path.relative_to(COURSES_DIR).as_posix()
     source_id = source_path.replace("/", "-").removesuffix(".md")
-    texts = pack(parse_blocks(doc.content), meta.get("title", source_id))
+    title = str(meta.get("title") or source_id)
+    texts = pack(parse_blocks(doc.content), title)
 
     metas, ids = [], []
     for seq, body in enumerate(texts):
         metas.append(
             {
                 "course_id": course_id,
+                # 목차를 만들 때 쓴다. 경로만으로는 한국어 질문과 영문 슬러그가
+                # 이어지지 않아 정상 질문이 범위 밖으로 밀렸다 (AI-07)
+                "title": title,
                 "mission_id": meta.get("missionId", ""),
                 # 판별이 애매하면 막는 쪽으로 기운다. 공개해야 할 걸 제한하면 답을
                 # 못 하고 끝나지만, 제한해야 할 걸 공개하면 되돌릴 수 없다
@@ -203,6 +207,11 @@ def report(texts: list[str], metas: list[dict]) -> None:
         print("  ← 코드 블록이 아닌데 상한을 넘은 조각이 있다. 분할 규칙을 본다")
 
 
+# 한도 초과만 잡다가 DNS 실패(getaddrinfo)로 275/633 에서 통째로 죽은 적이 있다.
+# REBUILD 는 시작할 때 기존 색인을 지우므로, 죽으면 쓸 수 있는 색인이 아예 없어진다
+TRANSIENT = ("RESOURCE_EXHAUSTED", "getaddrinfo", "Connection", "timed out", "UNAVAILABLE", "503")
+
+
 # 4. 적재: 한도에 걸리면 기다렸다 같은 배치를 다시 넣는다.
 # 여기서 포기하면 앞서 넣은 것만 남아 반쪽 색인이 된다
 def add_with_retry(store, texts, metas, ids, tries: int = 5) -> None:
@@ -211,10 +220,10 @@ def add_with_retry(store, texts, metas, ids, tries: int = 5) -> None:
             store.add_texts(texts, metadatas=metas, ids=ids)
             return
         except Exception as e:
-            if "RESOURCE_EXHAUSTED" not in str(e) or attempt == tries - 1:
+            if not any(t in str(e) for t in TRANSIENT) or attempt == tries - 1:
                 raise
             wait = 65 * (attempt + 1)
-            print(f"  한도 초과. {wait}초 기다린다 ({attempt + 1}/{tries - 1})", flush=True)
+            print(f"  실패. {wait}초 기다린다 ({attempt + 1}/{tries - 1}): {str(e)[:60]}", flush=True)
             time.sleep(wait)
 
 
@@ -222,6 +231,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="임베딩 없이 분할 결과만 본다")
     ap.add_argument("--limit", type=int, default=0, help="처리할 파일 수 상한")
+    # 임베딩은 하루 한도가 있고, REBUILD 는 실패하면 처음부터다. 실제로 두 번 죽었다.
+    # 이어서 넣으면 이미 값을 치른 조각을 다시 임베딩하지 않는다
+    ap.add_argument("--resume", action="store_true", help="이미 들어간 조각은 건너뛴다")
     ap.add_argument("--batch", type=int, default=25)
     # 무료 등급은 분당 한도를 조각 수로 센다. 배치 50 두 번에 100 을 채우고 429 가 났다.
     # 요청 수가 아니라 조각 수라는 걸 모르면 배치만 줄이다가 계속 막힌다
@@ -248,10 +260,9 @@ def main() -> None:
         print("dry-run 이라 적재하지 않는다")
         return
 
-    # REBUILD 만 지원하므로 통째로 지우고 다시 만든다.
     # 표시를 먼저 지워야, 다시 만드는 도중에 뜬 서버가 준비됐다고 하지 않는다
     INDEX_MARKER.unlink(missing_ok=True)
-    if CHROMA_DIR.exists():
+    if not args.resume and CHROMA_DIR.exists():
         shutil.rmtree(CHROMA_DIR)
 
     store = Chroma(
@@ -260,6 +271,18 @@ def main() -> None:
         persist_directory=str(CHROMA_DIR),
         collection_metadata={"hnsw:space": "cosine"},
     )
+    if args.resume:
+        have = set(store.get(include=[])["ids"])
+        keep = [i for i, cid in enumerate(ids) if cid not in have]
+        print(f"이어서: 이미 {len(have)}개, 넣을 것 {len(keep)}개")
+        texts = [texts[i] for i in keep]
+        metas = [metas[i] for i in keep]
+        ids = [ids[i] for i in keep]
+        if not texts:
+            INDEX_MARKER.write_text(str(len(have)), encoding="utf-8")
+            print(f"완료    : 더 넣을 것이 없다. 조각 {len(have)}")
+            return
+
     pause = 60.0 * args.batch / args.rpm
     for start in range(0, len(texts), args.batch):
         end = min(start + args.batch, len(texts))
@@ -270,8 +293,9 @@ def main() -> None:
 
     # 마지막에 표시를 남긴다. 중간에 죽으면 표시가 없어서 /health 가 준비됐다고
     # 하지 않는다. 순서를 바꾸면 반쪽 색인이 준비된 것으로 보인다
-    INDEX_MARKER.write_text(f"{len(texts)}", encoding="utf-8")
-    print(f"완료    : {CHROMA_DIR} · 조각 {len(texts)}")
+    total = len(store.get(include=[])["ids"])
+    INDEX_MARKER.write_text(str(total), encoding="utf-8")
+    print(f"완료    : {CHROMA_DIR} · 조각 {total}")
 
 
 if __name__ == "__main__":

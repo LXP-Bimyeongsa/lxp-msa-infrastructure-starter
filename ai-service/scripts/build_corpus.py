@@ -54,7 +54,9 @@ def slug(name: str) -> str:
 # 파이썬 주석 "# 출력: ..." 이 H1 으로 잡혀 title 에 들어간 적이 있다
 def first_heading(text: str, fallback: str) -> str:
     stripped = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-    m = re.search(r"^#\s+(.+)$", stripped, re.MULTILINE)
+    # H1 만 찾으면 안 된다. 교안은 "## Chapter 06. 메모리와 상태" 처럼 H2 로 시작해서
+    # 전부 슬러그로 떨어졌고, 그 슬러그가 분류 목차에 실려 정상 질문이 밀렸다 (AI-07)
+    m = re.search(r"^#{1,2}\s+(.+)$", stripped, re.MULTILINE)
     return m.group(1).strip() if m else fallback
 
 
