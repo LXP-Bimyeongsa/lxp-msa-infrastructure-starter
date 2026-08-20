@@ -1,0 +1,14 @@
+# 0.115.6 은 starlette 0.41.3 을 끌어와 알려진 취약점이 9건 잡힌다.
+# 0.141.1 이 starlette 1.6.0 을 쓴다. pip-audit 로 확인했다.
+fastapi==0.141.1
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+# 생성 -> 검증 -> 재생성 사이클을 그래프로 묶는다 (roadmap/engine.py).
+# CLI(scripts/)와 평가 러너도 같은 패키지를 쓰므로 이 목록이 필요하다.
+langgraph==1.2.11
+# 트레이스. LANGSMITH_TRACING=true 와 LANGSMITH_API_KEY 가 있을 때만 켜진다.
+langsmith==0.11.0
+
+# /actuator/prometheus. ai-service 와 같은 라이브러리를 쓴다.
+prometheus-client==0.21.1

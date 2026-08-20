@@ -1,0 +1,56 @@
+# 커리큘럼 로드맵 서비스 (AI 기능 1)
+#
+#   docker compose -f compose.curriculum.yaml up -d --build
+#   -> http://localhost:8087/actuator/health
+#
+# 별도 파일로 두는 이유 - compose.yaml 은 인프라와 도메인 서비스 자리다.
+# AI 기능은 아직 붙였다 뗐다 하는 단계라 평소 개발에서까지 떠 있을 이유가 없다
+# (D-14 의 용도별 분리, compose.demo.yaml 과 같은 판단).
+#
+# 이 서비스가 무엇을 안 하는가
+#   Consul 에 등록하지 않는다. 파이썬이라 Spring Cloud Consul 이 없고,
+#   지금은 gateway 라우팅 전이라 포트로 직접 부른다.
+#   DB 를 쓰지 않는다. 강의 목록은 이미지 안 JSON 을 기동할 때 한 번 읽는다.
+#   나중에 course-service 목록 API 로 바꾸면 그때 depends_on 이 생긴다.
+
+# 프로젝트 이름을 따로 준다. 안 주면 폴더 이름에서 만들어져 compose.yaml 과
+# 같은 프로젝트가 되고, 그러면 이 파일로 부른 명령이 스택 전체를 대상으로 본다.
+# `ps -a` 가 27개를 다 보여주고 `--remove-orphans` 를 붙이면 전부 지운다.
+# compose.deploy.yaml 이 `name: lxp-deploy` 로 같은 것을 피하고 있다.
+name: lxp-curriculum
+
+services:
+
+  curriculum-service:
+    build:
+      context: .
+      dockerfile: ./curriculum/service/Dockerfile
+    container_name: lxp-curriculum
+    environment:
+      # 무료 티어 키. 루트 .env 에 GEMINI_API_KEY 를 넣어둔다.
+      # 없으면 기동은 되고 /roadmap 호출에서 503 이 난다.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # 모델 교체 지점. 무료에서 유료로 갈 때 여기만 바꾼다.
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      # 검증 실패 시 재생성 포함 최대 호출 횟수.
+      # 늘리면 통과율이 오르고 쿼터를 더 먹는다. 무료 한도가 하루 20건이다.
+      ROADMAP_MAX_ATTEMPTS: ${ROADMAP_MAX_ATTEMPTS:-3}
+      # 트레이스. 키가 없으면 꺼진 채로 그냥 돈다. 노드별로 찍히므로
+      # 재생성이 왜 일어났는지가 남는다.
+      LANGSMITH_TRACING: ${LANGSMITH_TRACING:-false}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-lxp-curriculum}
+    ports:
+      # 8080 gateway / 8082 member / 8083 course / 8084 subscription
+      # 8085 payment / 8086 ai-service(조직 규정 QA) / 8087 여기
+      #
+      # 8086 을 안 쓴다. ai-service 가 먼저 잡았다 (PR #65 이후 문서와 PR #72
+      # compose 항목이 8086 이다). 두 compose 를 같이 띄우면 바인딩이 겹친다.
+      - "8087:8087"
+    networks: [lxp-net]
+
+# compose.yaml 이 먼저 떠 있어야 한다. 네트워크를 새로 만들지 않고 붙는다.
+networks:
+  lxp-net:
+    name: lxp-net
+    external: true
