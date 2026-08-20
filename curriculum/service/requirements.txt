@@ -7,3 +7,6 @@ pydantic==2.10.4
 langgraph==1.2.11
 # 트레이스. LANGSMITH_TRACING=true 와 LANGSMITH_API_KEY 가 있을 때만 켜진다.
 langsmith==0.11.0
+
+# /actuator/prometheus. ai-service 와 같은 라이브러리를 쓴다.
+prometheus-client==0.21.1
