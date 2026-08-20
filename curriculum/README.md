@@ -531,11 +531,74 @@ Consul 에 등록하지 않는다. 파이썬이라 Spring Cloud Consul 이 없�
 
 ## 아직 남은 것
 
+### 붙은 것
+
+```
+compose            compose.curriculum.yaml (프로젝트 lxp-curriculum)
+프로메테우스        lxp-docker-services 잡에 curriculum-service:8087
+```
+
+프로메테우스는 실제로 확인했다 — 타깃 `health=up`, `curriculum_catalog_courses = 43`.
+
+### gateway 라우팅 — Consul 등록이 먼저다
+
+`config-repo/gateway.yml` 의 라우트가 전부 `lb://service-name` 이다. Spring Cloud
+LoadBalancer 가 Consul 에서 찾는 주소라, **Consul 에 등록하지 않은 이 서비스는
+`lb://curriculum-service` 로 안 잡힌다.** 예외로 `uri: http://...` 를 직접 박는
+라우트는 지금 하나도 없다.
+
+붙이려면 둘 중 하나다.
+
+```
+1. 파이썬에서 Consul 등록·해제를 직접 구현한다
+2. gateway 라우트만 직접 주소로 예외를 둔다 (디스커버리를 우회한다)
+```
+
+1번을 **지금 쓰지 않은 이유** — `ai-service` 가 같은 문제를 이미 풀었다
+(PR #72 의 `app/consul.py`, 194줄). 아직 머지 전이라 그걸 두 벌 쓰게 된다.
+비-JVM 서비스가 둘이므로 한 번 만들어 같이 쓰는 편이 맞다.
+
+D-33 서비스 토큰 검증도 같은 자리에 붙는다. 지금은 gateway 를 거치지 않고
+포트로 직접 부르는 것을 전제한다.
+
+### Jenkins — 파이프라인이 Gradle 전용이다
+
+`ci/Jenkinsfile` 이 `SERVICES` 를 돌면서 이렇게 한다.
+
+```groovy
+dir(svc) { sh './gradlew clean build --no-daemon' }
+docker build -f ${svc}/Dockerfile ...
+```
+
+`curriculum-service` 를 `SERVICES` 에 넣으면 **gradlew 가 없는 폴더에서 돌아
+바로 깨진다.** Dockerfile 경로 모양도 다르다(`curriculum/service/Dockerfile`).
+
+파이썬 서비스를 태우려면 파이프라인에 분기를 넣어야 하는데, 이것도
+`ai-service` 와 공통 문제다. `ai-service` 쪽도 아직 안 넣었다.
+
+### 화면
+
+`frontend/client` 에 입력 폼과 결과 표시가 없다. SSE 엔드포인트가 있으므로
+붙이는 쪽은 `EventSource` 가 아니라 `fetch` + `ReadableStream` 을 써야 한다
+(`EventSource` 는 GET 만 된다).
+
+### course-service
+
 **`Course` 엔티티에 필드가 없다.** MongoDB 는 스키마가 없어서 적재는 되지만,
 `course-service` 의 자바 엔티티가 `estimatedHours`·`level`·`topics` 를 모른다.
-읽으려면 엔티티에 필드를 추가해야 한다.
 
 **강의 목록 조회 API 가 없다.** 지금은 단건 조회(`GET /api/courses/{id}`)만 있다.
 로드맵은 전체 목록이 필요하다.
 
 둘 다 `course-service` 를 건드리는 일이라 담당자와 협의가 필요하다.
+지금은 `catalog.load_courses()` 가 JSON 을 직접 읽어 우회한다.
+
+### 포트·경로 정리
+
+```
+8086  ai-service        /api/ai/ping   /api/ai/chat
+8087  curriculum        /api/ai/curriculum/**
+```
+
+`/api/ai/` 아래에 서비스가 여럿이다. gateway 라우트를 `/api/ai/**` 로 잡으면
+하나로만 간다. **`/api/ai/curriculum/**` 로 좁혀 잡아야 한다.**
