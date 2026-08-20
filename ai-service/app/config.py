@@ -23,15 +23,6 @@ log = logging.getLogger(__name__)
 APP_NAME = "ai-service"
 PORT = 8086
 
-# 로컬 실행 편의. 컨테이너에서는 compose가 환경변수를 주입하고 .env 파일이 없으므로
-# 아무 일도 하지 않는다. 저장소에 커밋되지 않는 파일이라(gitignore) 운영 경로에
-# 영향을 주지 않는다.
-_ENV_FILE = Path(__file__).resolve().parent.parent / ".env"
-if _ENV_FILE.is_file():
-    from dotenv import load_dotenv
-
-    load_dotenv(_ENV_FILE)
-
 # config-server가 늦게 뜨거나 죽어 있어도 서비스는 떠야 한다. compose의
 # depends_on(service_healthy)이 순서를 보장하지만, 운영 중 config-server가
 # 재기동할 때 이 서비스가 같이 죽으면 안 된다.

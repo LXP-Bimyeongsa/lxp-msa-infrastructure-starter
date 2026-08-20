@@ -13,8 +13,6 @@ dependencies = [
     # 규정 문서 front matter 파싱
     "pyyaml>=6.0",
     "google-genai>=1.0",
-    # 로컬 실행에서 ai-service/.env 를 읽는다. 컨테이너에는 그 파일이 없어 무영향.
-    "python-dotenv>=1.0",
 ]
 
 [dependency-groups]
