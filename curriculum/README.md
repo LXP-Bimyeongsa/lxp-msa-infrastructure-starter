@@ -398,7 +398,7 @@ API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은
 | `POST /api/ai/curriculum/roadmap/stream` | 같은 일을 SSE 로 흘려보낸다 |
 
 ```bash
-curl -s localhost:8086/api/ai/curriculum/roadmap \
+curl -s localhost:8087/api/ai/curriculum/roadmap \
   -H 'Content-Type: application/json' \
   -d '{"goal":"백엔드 개발자가 되고 싶다","weeks":8,"hoursPerWeek":15,"level":1}'
 ```

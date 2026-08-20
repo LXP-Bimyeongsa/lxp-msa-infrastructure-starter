@@ -13,9 +13,9 @@ COPY curriculum/roadmap/      /app/curriculum/roadmap/
 COPY curriculum/service/      /app/curriculum/service/
 COPY curriculum/data/         /app/curriculum/data/
 
-EXPOSE 8086
+EXPOSE 8087
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
-    CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:8086/actuator/health')"
+    CMD python -c "import urllib.request;urllib.request.urlopen('http://localhost:8087/actuator/health')"
 
-CMD ["uvicorn", "curriculum.service.app:app", "--host", "0.0.0.0", "--port", "8086"]
+CMD ["uvicorn", "curriculum.service.app:app", "--host", "0.0.0.0", "--port", "8087"]

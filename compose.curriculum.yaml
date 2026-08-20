@@ -1,7 +1,7 @@
 # 커리큘럼 로드맵 서비스 (AI 기능 1)
 #
 #   docker compose -f compose.curriculum.yaml up -d --build
-#   -> http://localhost:8086/actuator/health
+#   -> http://localhost:8087/actuator/health
 #
 # 별도 파일로 두는 이유 - compose.yaml 은 인프라와 도메인 서비스 자리다.
 # AI 기능은 아직 붙였다 뗐다 하는 단계라 평소 개발에서까지 떠 있을 이유가 없다
@@ -36,8 +36,11 @@ services:
       LANGSMITH_PROJECT: ${LANGSMITH_PROJECT:-lxp-curriculum}
     ports:
       # 8080 gateway / 8082 member / 8083 course / 8084 subscription
-      # 8085 payment / 8086 여기
-      - "8086:8086"
+      # 8085 payment / 8086 ai-service(조직 규정 QA) / 8087 여기
+      #
+      # 8086 을 안 쓴다. ai-service 가 먼저 잡았다 (PR #65 이후 문서와 PR #72
+      # compose 항목이 8086 이다). 두 compose 를 같이 띄우면 바인딩이 겹친다.
+      - "8087:8087"
     networks: [lxp-net]
 
 # compose.yaml 이 먼저 떠 있어야 한다. 네트워크를 새로 만들지 않고 붙는다.
