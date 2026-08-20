@@ -394,6 +394,11 @@ temperature 가 0 이 아니라서다(0.2). R-01 의 트랙 비율이 86%에서 
 docker compose -f compose.curriculum.yaml up -d --build
 ```
 
+프로젝트 이름을 `lxp-curriculum` 으로 따로 준다. 안 주면 폴더 이름에서 만들어져
+`compose.yaml` 과 같은 프로젝트가 되고, **이 파일로 부른 명령이 스택 전체를
+대상으로 본다** — `ps -a` 가 27개를 다 보여주고 `--remove-orphans` 를 붙이면
+전부 지운다. `compose.deploy.yaml` 이 `name: lxp-deploy` 로 같은 것을 피하고 있다.
+
 `compose.yaml` 이 먼저 떠 있어야 한다. 네트워크(`lxp-net`)를 새로 만들지 않고 붙는다.
 API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은 되고
 로드맵 호출에서 503 이 난다.
@@ -448,6 +453,23 @@ data: {"status": 429, "detail": "쿼터 소진"}
 **조용한 구간이 최대 한 번의 모델 호출만큼 생긴다.** 호출이 60초를 넘기기
 시작하면 프록시가 끊을 수 있다. 그때는 하트비트(`: ping`)를 넣어야 한다.
 지금은 한 호출이 10~20초라 넣지 않았다.
+
+### 컨테이너에서 확인한 것
+
+이미지 310MB (`python:3.12-slim` + langgraph 계열). 이미지 안에 `__pycache__`·
+`.venv`·`scripts/` 가 없다 — Dockerfile 이 가져갈 경로만 적은 결과다.
+
+```
+health          {"status":"UP","courses":43}
+catalog         43개 / 762h
+로드맵 생성      1개 · 40h/40h · 4주 · 호출 2회 (재생성 1회) · 검증 통과
+SSE             start 0.05s -> generate 1.46s -> verify 실패 65h>40h
+                -> generate 2.81s -> verify 통과 -> schedule -> result
+지표            requests{ok} 2 · llm_calls 4 · first_try 0 · 토큰 in 7836
+```
+
+한글 본문을 `curl -d` 로 바로 넘기면 Windows 셸에서 깨져 422 가 난다.
+파일로 두고 `--data-binary @req.json` 을 쓴다.
 
 ### 지표
 
