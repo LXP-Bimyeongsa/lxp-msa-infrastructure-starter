@@ -25,8 +25,6 @@ scrape_configs:
           - "course-service:8083"
           - "subscription-service:8084"
           - "payment-service:8085"
-          # 비-JVM 서비스지만 경로를 Spring과 같게 맞춰서 이 잡에 그대로 들어간다 (D-69).
-          - "ai-service:8086"
 
   # ── 인프라 (D-62) ─────────────────────────────────────────
   #

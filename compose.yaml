@@ -443,50 +443,6 @@ services:
       retries: 20
       start_period: 30s
 
-  # 조직 규정 QA 챗봇 (D-69).
-  #
-  # 이 저장소의 유일한 비-JVM 서비스다. spring-cloud-consul과 Actuator가 없으므로
-  # Consul 등록·해제, config-server 조회, /actuator/health, /actuator/prometheus를
-  # ai-service/app/ 안에서 직접 구현했다. 경로를 Spring과 똑같이 둔 것은 Consul의
-  # health-check-path와 prometheus의 metrics_path가 전역/잡 단위 설정이라,
-  # 다르게 하면 두 곳을 다 고쳐야 하기 때문이다.
-  ai-service:
-    build:
-      context: .
-      dockerfile: ./ai-service/Dockerfile
-    container_name: lxp-ai-service
-    environment:
-      CONSUL_HOST: consul-1
-      CONSUL_PORT: 8500
-      LOG_DIR: /logs
-      CONFIG_SERVER_URL: http://config-server:8888
-      # 모델 API 키. config-repo는 평문 git이고 이 저장소는 공개이므로
-      # 키는 config-server를 거치지 않고 여기서만 주입한다.
-      # 값은 저장소 루트 .env 에 두며 .env 는 gitignore 대상이다.
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      # 서비스 토큰 검증 (D-33). issuer는 외부 주소, JWKS는 내부 주소 (P-09)
-      KEYCLOAK_ISSUER_URI: ${KEYCLOAK_PUBLIC_URL:-http://localhost:8180}/realms/lxp
-      KEYCLOAK_JWK_SET_URI: http://keycloak:8080/realms/lxp/protocol/openid-connect/certs
-    ports:
-      - "8086:8086"
-    volumes:
-      - ./infrastructure/logs:/logs
-    depends_on:
-      consul-1:
-        condition: service_healthy
-      config-server:
-        condition: service_healthy
-    networks: [lxp-net]
-    healthcheck:
-      # 파이썬 슬림 이미지에는 curl이 없다. 표준 라이브러리로 확인한다.
-      # Consul 미등록 시 헬스가 503을 돌려주므로 여기서도 unhealthy가 된다.
-      test: ["CMD", "python", "-m", "app.healthcheck"]
-      interval: 10s
-      timeout: 5s
-      retries: 20
-      # JVM 서비스보다 기동이 빠르다.
-      start_period: 10s
-
 
 networks:
   lxp-net:
