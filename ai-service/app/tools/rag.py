@@ -54,6 +54,9 @@ def search(query: str, course_id: str | None = None, k: int = TOP_K) -> list[dic
             "text": doc.page_content,
             "score": score,
             "course_id": doc.metadata["course_id"],
+            # 필터가 이미 걸렀지만 그대로 싣는다. 가드레일이 결과물에서 한 번 더 본다.
+            # 필터가 뚫렸을 때 그것을 알아챌 방법이 이것뿐이다
+            "visibility": doc.metadata["visibility"],
             "seq": doc.metadata["seq"],
             "source_path": doc.metadata["source_path"],
         }

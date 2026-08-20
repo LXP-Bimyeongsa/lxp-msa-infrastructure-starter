@@ -21,6 +21,7 @@ from app.graph.nodes import (
     classify,
     generate,
     grade,
+    guard,
     hint,
     no_evidence,
     retrieve,
@@ -39,6 +40,7 @@ def build_graph():
     g.add_node("rewrite", rewrite)
     g.add_node("hint", hint)
     g.add_node("no_evidence", no_evidence)
+    g.add_node("guard", guard)
 
     g.add_edge(START, "classify")
     g.add_conditional_edges(
@@ -55,7 +57,9 @@ def build_graph():
         {"generate": "generate", "rewrite": "rewrite", "no_evidence": "no_evidence"},
     )
     g.add_edge("rewrite", "retrieve")
-    g.add_edge("hint", END)
-    g.add_edge("generate", END)
+    # 모델이 만든 답변만 검사한다. no_evidence 는 고정 문구라 볼 것이 없다
+    g.add_edge("hint", "guard")
+    g.add_edge("generate", "guard")
+    g.add_edge("guard", END)
     g.add_edge("no_evidence", END)
     return g.compile()

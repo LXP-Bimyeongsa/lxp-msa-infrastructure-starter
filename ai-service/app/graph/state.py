@@ -38,3 +38,4 @@ class TutorState(TypedDict, total=False):
     route: str  # ANSWER · HINT · NO_EVIDENCE · OUT_OF_SCOPE
     answer: str
     citations: list[dict]
+    blocked: list[str]  # 가드레일이 걸러낸 사유. 비어 있으면 통과
