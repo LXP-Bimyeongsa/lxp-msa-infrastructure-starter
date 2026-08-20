@@ -136,6 +136,17 @@
   .banner.err  { background: rgba(248,81,73,.08); border: 1px solid rgba(248,81,73,.35); color: #c9302c; }
 
   .hidden { display: none !important; }
+
+  /* ── 챗봇 (D-69) ──────────────────────────────────────────── */
+  .chat-scroll { height: 58vh; overflow-y: auto; padding: 4px 4px 4px 0; display: flex; flex-direction: column; gap: 14px; }
+  .chat-msg { max-width: 78%; padding: 12px 16px; border-radius: var(--r-lg); font-size: 15.5px; line-height: 1.5; white-space: pre-wrap; }
+  .chat-msg.user { align-self: flex-end; background: var(--primary); color: #fff; border-bottom-right-radius: 4px; }
+  .chat-msg.assistant { align-self: flex-start; background: var(--canvas); border: 1px solid var(--hairline); border-bottom-left-radius: 4px; }
+  .chat-msg.assistant.streaming::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ink-48); margin-left: 4px; animation: pulse .9s infinite; }
+  .chat-cites { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .chat-cites .tag { font-family: var(--mono); font-size: 11px; color: #6e6e73; background: var(--parchment); border: 1px solid var(--hairline); border-radius: 6px; padding: 2px 7px; }
+  .chat-input-row { display: flex; gap: 10px; margin-top: 16px; }
+  .chat-input-row .input { flex: 1; }
 </style>
 </head>
 <body>
@@ -178,13 +189,14 @@ const state = {
   currentCourse: null, playback: null, playbackLocked: false, playbackError: null, playbackBusy: false,
   subscription: null, selectedPlan: 'BASIC', subBusy: false, subError: null,
   polling: false, pollCount: 0, subDone: false, pollTimeout: false, payment: null,
+  chatMessages: [], chatBusy: false, chatError: null,
   devOpen: false, log: [],
 };
 let pollTimer = null;
 
 /* 입력값은 비제어(uncontrolled)로 두고 필요할 때 DOM 에서 읽는다.
    (매 타건마다 re-render 하면 포커스가 튀기 때문) */
-const draft = { email: '', password: '', name: '', courseTitle: '', courseDesc: '', loadCourseId: '' };
+const draft = { email: '', password: '', name: '', courseTitle: '', courseDesc: '', loadCourseId: '', chatQuestion: '' };
 function syncDraft() {
   document.querySelectorAll('[data-draft]').forEach(el => { draft[el.dataset.draft] = el.value; });
 }
@@ -375,6 +387,74 @@ function goMypage() {
 }
 function nav(view) { syncDraft(); if (view === 'mypage') { goMypage(); return; } state.view = view; render(); }
 
+/* ── 챗봇 (D-69, 계획서 17번) ─────────────────────────────────
+   /api/ai/chat 은 SSE다(13번). EventSource는 GET만 되므로 POST로 흘려받으려면
+   fetch + ReadableStream을 직접 읽어야 한다. 이벤트 3종: meta(근거·경고, 1회) ->
+   chunk(본문 조각, 여러 번) -> done. 실패하면 meta 대신 error. */
+async function sendChat() {
+  syncDraft();
+  const question = draft.chatQuestion.trim();
+  if (!question || state.chatBusy) return;
+  draft.chatQuestion = '';
+  const msg = { role: 'assistant', text: '', citations: [], references: [], warning: null, streaming: true, failed: false };
+  state.chatMessages.push({ role: 'user', text: question });
+  state.chatMessages.push(msg);
+  state.chatBusy = true; state.chatError = null;
+  render();
+  scrollChatToBottom();
+
+  const t0 = performance.now();
+  let status = 0, networkError = false;
+  try {
+    const res = await fetch(CONFIG.apiBase.replace(/\/$/, '') + '/api/ai/chat', {
+      method: 'POST',
+      headers: Object.assign({ 'Content-Type': 'application/json' }, state.token ? { Authorization: 'Bearer ' + state.token } : {}),
+      body: JSON.stringify({ question }),
+    });
+    status = res.status;
+    if (!res.ok || !res.body) {
+      msg.streaming = false; msg.failed = true;
+      msg.text = status === 413 ? '질문이 너무 깁니다.' : status === 503 ? '챗봇이 아직 준비되지 않았습니다.' : ('요청 실패 (' + status + ')');
+      pushLog({ method: 'POST', path: '/api/ai/chat', status, ms: Math.round(performance.now() - t0), traceId: null, ok: false });
+      state.chatBusy = false; render(); return;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const block = buf.slice(0, idx); buf = buf.slice(idx + 2);
+        const m = /^event: (.+)\ndata: (.*)$/s.exec(block);
+        if (!m) continue;
+        const [, event, dataRaw] = m;
+        let data; try { data = JSON.parse(dataRaw); } catch (e) { continue; }
+        if (event === 'meta') { msg.citations = data.citations || []; msg.references = data.references || []; msg.warning = data.warning || null; }
+        else if (event === 'chunk') { msg.text += data; }
+        else if (event === 'error') { msg.failed = true; msg.text = data.detail || '오류가 발생했습니다.'; }
+        else if (event === 'done') { /* 스트림 종료 표시만, 아래 finally에서 streaming=false 처리 */ }
+        render(); scrollChatToBottom();
+      }
+    }
+    pushLog({ method: 'POST', path: '/api/ai/chat', status, ms: Math.round(performance.now() - t0), traceId: null, ok: !msg.failed });
+  } catch (e) {
+    networkError = true;
+    msg.streaming = false; msg.failed = true;
+    msg.text = '연결 실패 — gateway(8080)가 실행 중인지, CORS 허용 출처를 확인하세요.';
+    pushLog({ method: 'POST', path: '/api/ai/chat', status: 0, ms: Math.round(performance.now() - t0), traceId: null, ok: false });
+  }
+  msg.streaming = false;
+  state.chatBusy = false;
+  render(); scrollChatToBottom();
+}
+function scrollChatToBottom() {
+  const el = document.getElementById('chat-scroll');
+  if (el) el.scrollTop = el.scrollHeight;
+}
+
 /* ═══════════════════════════════════════════════════════════════
    렌더
    ═══════════════════════════════════════════════════════════════ */
@@ -394,7 +474,7 @@ function shell(inner) {
   </header>
   <div class="sub-nav">
     <span class="title">LXP</span>
-    ${link('courses','강의')} ${link('subscribe','구독')} ${link('mypage','마이페이지')}
+    ${link('courses','강의')} ${link('subscribe','구독')} ${link('mypage','마이페이지')} ${link('chat','챗봇')}
     <span class="spacer"></span>
   </div>
   <main>${inner}</main>`;
@@ -615,6 +695,34 @@ function viewMypage() {
   </div>`);
 }
 
+function viewChat() {
+  const s = state;
+  const bubble = (m) => {
+    if (m.role === 'user') return `<div class="chat-msg user">${esc(m.text)}</div>`;
+    const cites = (m.citations && m.citations.length) || (m.references && m.references.length)
+      ? `<div class="chat-cites">${(m.citations||[]).map(c => `<span class="tag">근거 ${esc(c)}</span>`).join('')}${(m.references||[]).map(c => `<span class="tag">참고 ${esc(c)}</span>`).join('')}</div>` : '';
+    const warn = m.warning ? `<div class="banner warn" style="margin:10px 0 0;">${esc(m.warning)}</div>` : '';
+    const err = m.failed ? `<div class="banner err" style="margin:10px 0 0;">${esc(m.text)}</div>` : '';
+    return `<div class="chat-msg assistant${m.streaming?' streaming':''}">${m.failed ? '' : esc(m.text)}${err}${!m.failed ? cites + warn : ''}</div>`;
+  };
+  return shell(`
+  <div class="wrap wrap-narrow" style="animation:fadeUp .3s ease;">
+    <h1 class="t-dlg" style="font-size:34px;margin:0 0 6px;">규정 챗봇</h1>
+    <p style="color:#6e6e73;margin:0 0 20px;">사내 규정에 대해 물어보세요. 답변 근거가 되는 규정 청크ID를 함께 보여줍니다.</p>
+    <div class="card">
+      <div class="chat-scroll" id="chat-scroll">
+        ${s.chatMessages.length ? s.chatMessages.map(bubble).join('')
+          : `<div style="color:#86868b;text-align:center;padding:40px 0;">아직 대화가 없습니다. 아래에 질문을 입력해 보세요.<br><span class="t-fine">예: "연차 휴가는 며칠인가요?"</span></div>`}
+      </div>
+      <div class="chat-input-row">
+        <input class="input" data-draft="chatQuestion" value="${esc(draft.chatQuestion)}" placeholder="질문을 입력하세요" ${s.chatBusy?'disabled':''}>
+        <button class="btn btn-primary" data-act="sendChat" ${s.chatBusy?'disabled':''}>${s.chatBusy?'<span class="spinner"></span>':'전송'}</button>
+      </div>
+      <div class="mono t-fine" style="margin-top:10px;">POST /api/ai/chat · text/event-stream</div>
+    </div>
+  </div>`);
+}
+
 function devPanel() {
   const s = state;
   const mc = { GET:'#3fb950', POST:'#0066cc', DELETE:'#f85149', PUT:'#d29922', PATCH:'#d29922' };
@@ -644,6 +752,7 @@ function render() {
   else if (s.view === 'course') body = viewCourse();
   else if (s.view === 'subscribe') body = viewSubscribe();
   else if (s.view === 'mypage') body = viewMypage();
+  else if (s.view === 'chat') body = viewChat();
   else body = viewCourses();
   const showDev = !!s.token;
   document.getElementById('app').innerHTML = body + (showDev ? devPanel() : '');
@@ -668,12 +777,14 @@ document.addEventListener('click', (e) => {
     case 'repoll': if (state.subscription) startPoll(state.subscription.subscriptionId); break;
     case 'cancelSub': cancelSub(); break;
     case 'deleteAccount': deleteAccount(); break;
+    case 'sendChat': sendChat(); break;
     case 'toggleDev': state.devOpen = !state.devOpen; render(); break;
   }
 });
-// Enter 키로 로그인 제출
+// Enter 키로 로그인 제출 / 챗봇 질문 전송
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && state.view === 'login' && !state.token) { syncDraft(); doAuth(); }
+  if (e.key === 'Enter' && state.view === 'chat' && e.target.dataset.draft === 'chatQuestion') { sendChat(); }
 });
 // 타이핑 중 draft 유지 (re-render 없이)
 document.addEventListener('input', (e) => {
