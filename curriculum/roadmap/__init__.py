@@ -13,11 +13,11 @@ CLI(`scripts/`), 평가 러너, FastAPI 서비스(`service/`)가 전부 이 패�
 
 from .catalog import LEVEL_LABEL, available_hours, load_courses
 from .engine import Result, build, stream
-from .llm import Gemini, LLMError
+from .llm import DEFAULT_MODEL, Gemini, LLMError
 from .schedule import pack_weeks
 from .verify import check
 
 __all__ = [
     "LEVEL_LABEL", "available_hours", "load_courses",
-    "Result", "build", "stream", "Gemini", "LLMError", "pack_weeks", "check",
+    "Result", "build", "stream", "DEFAULT_MODEL", "Gemini", "LLMError", "pack_weeks", "check",
 ]

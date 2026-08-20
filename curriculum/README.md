@@ -2,6 +2,12 @@
 
 학습자가 목표와 기간, 현재 수준을 넣으면 기존 강의 중에서 골라 학습 순서를 짜주는 기능이다.
 
+**처음 보는 사람은 [ONBOARDING.md](ONBOARDING.md) 부터 읽는다.** 돌려보고 고치기 시작하는
+데까지만 짧게 적어뒀다. 이 문서는 왜 그렇게 만들었는지를 남긴 기록이라 길다.
+
+발표용 정리는 [PRESENTATION.md](PRESENTATION.md) 에 있다 — 왜 AI 인지, 무료 API 를 어떻게
+갈아끼우는지, LangGraph 가 뭘 막는지.
+
 ## 폴더
 
 ```
@@ -9,7 +15,7 @@ curriculum/
   roadmap/              코어 패키지. CLI·평가·서비스가 전부 이걸 쓴다
     catalog.py          강의 로드          <- course-service API 로 바꿀 때 여기
     prompt.py           프롬프트 조립
-    verify.py           코드 검증 4가지
+    verify.py           코드 검증 5가지
     schedule.py         주차 배분
     llm.py              모델 호출          <- 모델을 바꿀 때 여기
     engine.py           LangGraph 그래프. 생성 -> 검증 -> 재생성
@@ -73,7 +79,7 @@ L3 이다.
 
 ```
 강의 43개 · 총 762시간
-BEGINNER 16 · INTERMEDIATE 19 · ADVANCED 8
+L1 8 · L2 9 · L3 10 · L4 8 · L5 8
 ```
 
 주요 트랙은 백엔드 15, 프론트엔드 8, 인프라 7, 데이터베이스 6이다. 나머지는 CS기초 4, 협업 3이다.
@@ -135,12 +141,13 @@ LLM   어떤 강의를 어떤 순서로 들을지 고른다
 
 주차 배분을 LLM 에게 맡기지 않는다. 시간 합산이라 계산이지 판단이 아니다.
 
-### 검증 4가지
+### 검증 5가지
 
 `verify()` 가 본다. 나중에 평가 하네스의 씨앗이 된다.
 
 | 검증 | 잡는 것 |
 |---|---|
+| 형식 | `index` 가 없거나 정수가 아닌가 (`true` 도 막는다 — bool 은 int 의 하위형이라 1번 강의가 된다) |
 | 번호 범위 | 목록에 없는 강의를 지어냈나 |
 | 중복 | 같은 강의를 여러 번 골랐나 |
 | 기간 | 시간 합이 예산을 넘나 |
@@ -167,7 +174,8 @@ LLM   어떤 강의를 어떤 순서로 들을지 고른다
 프롬프트 2,618자 · 입력 1,564 토큰 · 출력 1,277 토큰
 ```
 
-TPM 250,000 기준 분당 90건 이상 가능하다. 무료 티어에서 부담이 없다.
+토큰은 문제가 아니다. TPM 250,000 기준 분당 90건 이상 들어간다.
+**병목은 토큰이 아니라 호출 수다** — 아래 무료 티어 한도 절을 본다.
 
 `description` 은 프롬프트에서 뺐다. 순서를 짜는 데 필요 없고 토큰만 늘린다.
 
@@ -186,7 +194,7 @@ python curriculum/scripts/evaluate.py --case R-04 --verbose
 ### 채점은 두 층이다
 
 ```text
-공통  roadmap.verify() 4가지    번호 범위 · 중복 · 기간 · 트랙 내 난이도 역전
+공통  roadmap.verify() 5가지    형식 · 번호 범위 · 중복 · 기간 · 트랙 내 난이도 역전
 개별  케이스마다 적어둔 기대     아래 표
 ```
 
@@ -319,7 +327,7 @@ LangGraph 로 묶여 있다 (`roadmap/engine.py`). 기본 최대 3회 호출한�
 
 "강의 하나만 남아도 괜찮다"가 주효했다. 모델이 하나만 고르는 것을 어색해했다.
 
-**루프는 `verify()` 가 잡는 4가지만 재시도한다.** 채움 부족이나 트랙 비율 미달 같은
+**루프는 `verify()` 가 잡는 5가지만 재시도한다.** 채움 부족이나 트랙 비율 미달 같은
 케이스별 기대는 루프가 보지 않는다. 그건 프롬프트로 잡아야 한다.
 
 `--max-attempts 1` 로 주면 루프 없이 순수 프롬프트 성능만 잰다.
@@ -410,7 +418,7 @@ API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은
 | | |
 |---|---|
 | `GET /` | 촬영용 데모 콘솔 |
-| `GET /actuator/health` | compose healthcheck 와 Consul |
+| `GET /actuator/health` | compose healthcheck · Consul · **지금 쓰는 모델 확인** |
 | `GET /actuator/prometheus` | 지표 스크레이프 (D-62) |
 | `GET /api/ai/curriculum/catalog` | 고를 수 있는 강의 목록 |
 | `POST /api/ai/curriculum/roadmap` | 로드맵 생성 |
@@ -530,7 +538,7 @@ CLI 는 예산을 안 건다. 오래 기다려도 되기 때문이다.
 지연을 먹는다.
 
 ```
-curriculum_roadmap_requests_total{outcome="ok"|"quota"|"model_error"|"unavailable"}
+curriculum_roadmap_requests_total{outcome=..., model=...}
 curriculum_roadmap_first_try_total      재생성 없이 통과한 요청
 curriculum_roadmap_llm_calls_total      모델 호출 수 (재생성 포함)
 curriculum_roadmap_unresolved_total     재생성을 다 쓰고도 문제가 남은 요청
@@ -540,6 +548,9 @@ curriculum_catalog_courses              기동할 때 읽은 강의 수
 ```
 
 **첫 시도 통과율 = `first_try_total / requests_total{outcome="ok"}`.**
+
+`model` 라벨을 붙였다. 무료 한도가 모델별이라 갈아끼우며 쓰는데, 어느 모델이 답했는지
+안 남기면 결과가 흔들려도 원인을 못 찾는다. 응답과 `/actuator/health` 에도 같이 실린다.
 지금까지 이 숫자는 평가 러너를 손으로 돌려야만 나왔다. 이제 실사용에서도 보인다.
 
 히스토그램 버킷을 1~120초로 잡았다. 기본 버킷은 상한이 10초라 모델 호출
