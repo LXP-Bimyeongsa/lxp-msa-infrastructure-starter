@@ -103,17 +103,36 @@ class StubProvider:
     형식을 지킨 응답을 흘려보내서 라우터와 11번 검증 가드의 경로를 시험할 수 있다.
     조각을 여러 개로 쪼개는 것은 의도다 — 가드가 첫 줄만 버퍼링하는 동작을
     확인하려면 한 덩어리로 오면 안 된다.
+
+    call_citations을 주면 호출 순서대로 다른 청크ID 목록을 돌려준다 — 11번
+    재생성 가드가 "1차는 유령 청크ID, 2차는 정상"처럼 호출별로 다른 응답을
+    받는 상황을 재현하기 위해서다. 목록보다 호출이 많아지면 마지막 값을
+    반복한다. 안 주면 매번 citations(또는 기본값)를 그대로 돌려준다.
     """
 
-    def __init__(self, citations: list[str] | None = None, body: str = "테스트 응답입니다."):
+    def __init__(
+        self,
+        citations: list[str] | None = None,
+        body: str = "테스트 응답입니다.",
+        call_citations: list[list[str]] | None = None,
+    ):
         self._citations = citations if citations is not None else ["RULES-002-001"]
         self._body = body
+        self._call_citations = call_citations
+        self._call_count = 0
 
     @property
     def model(self) -> str:
         return "stub"
 
     async def generate_stream(self, system: str, prompt: str) -> AsyncIterator[str]:
-        head = ", ".join(self._citations) if self._citations else "없음"
+        if self._call_citations is not None:
+            idx = min(self._call_count, len(self._call_citations) - 1)
+            citations = self._call_citations[idx]
+        else:
+            citations = self._citations
+        self._call_count += 1
+
+        head = ", ".join(citations) if citations else "없음"
         for piece in (f"근거: {head}\n", "---\n", self._body):
             yield piece
