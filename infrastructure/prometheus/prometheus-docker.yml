@@ -25,6 +25,9 @@ scrape_configs:
           - "course-service:8083"
           - "subscription-service:8084"
           - "payment-service:8085"
+          # 비-JVM 서비스지만 /actuator/prometheus 로 경로를 맞춰 이 잡에 그대로 들어간다.
+          # compose.curriculum.yaml 로 따로 띄우므로 안 떠 있으면 up==0 이 된다.
+          - "curriculum-service:8087"
 
   # ── 인프라 (D-62) ─────────────────────────────────────────
   #
