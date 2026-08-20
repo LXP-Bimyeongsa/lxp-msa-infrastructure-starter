@@ -143,28 +143,25 @@ def _compile():
 GRAPH = _compile()
 
 
-def build(courses, llm, goal, weeks, hours_per_week, level,
-          max_attempts=3, on_retry=None) -> Result:
-    """검증이 통과할 때까지 재생성한다.
-
-    attempts 가 1 이면 첫 시도에 통과했다는 뜻이고, 이 값이 프롬프트 품질 지표다.
-    루프가 있으면 결국 통과하지만 호출이 늘면 쿼터와 지연을 먹는다.
-    """
+def _inputs(courses, goal, weeks, hours_per_week, level, max_attempts):
     budget = weeks * hours_per_week
-    final = GRAPH.invoke(
-        {
-            "courses": courses, "goal": goal, "budget_hours": budget,
-            "weeks": weeks, "hours_per_week": hours_per_week, "level": level,
-            "max_attempts": max_attempts,
-            "feedback": None, "attempts": 0, "tok_in": 0, "tok_out": 0,
-        },
-        config={
-            "configurable": {"llm": llm, "on_retry": on_retry},
-            # generate+verify 가 한 번에 2 스텝이다. 여유를 두고 잡는다.
-            "recursion_limit": max_attempts * 2 + 5,
-        },
-    )
+    return budget, {
+        "courses": courses, "goal": goal, "budget_hours": budget,
+        "weeks": weeks, "hours_per_week": hours_per_week, "level": level,
+        "max_attempts": max_attempts,
+        "feedback": None, "attempts": 0, "tok_in": 0, "tok_out": 0,
+    }
 
+
+def _config(llm, on_retry, max_attempts):
+    return {
+        "configurable": {"llm": llm, "on_retry": on_retry},
+        # generate+verify 가 한 번에 2 스텝이다. 여유를 두고 잡는다.
+        "recursion_limit": max_attempts * 2 + 5,
+    }
+
+
+def _result(final, courses, budget) -> Result:
     reasons = [s.get("reason", "") for s in final["selected"]
                if 0 <= s["index"] < len(courses)]
     packed = final["packed"]
@@ -179,3 +176,61 @@ def build(courses, llm, goal, weeks, hours_per_week, level,
         problems=final["problems"],
         tokens={"input": final["tok_in"], "output": final["tok_out"]},
     )
+
+
+def build(courses, llm, goal, weeks, hours_per_week, level,
+          max_attempts=3, on_retry=None) -> Result:
+    """검증이 통과할 때까지 재생성한다.
+
+    attempts 가 1 이면 첫 시도에 통과했다는 뜻이고, 이 값이 프롬프트 품질 지표다.
+    루프가 있으면 결국 통과하지만 호출이 늘면 쿼터와 지연을 먹는다.
+    """
+    budget, state = _inputs(courses, goal, weeks, hours_per_week, level, max_attempts)
+    final = GRAPH.invoke(state, config=_config(llm, on_retry, max_attempts))
+    return _result(final, courses, budget)
+
+
+def stream(courses, llm, goal, weeks, hours_per_week, level, max_attempts=3):
+    """build() 와 같은 일을 하되 노드가 끝날 때마다 진행 상황을 내보낸다.
+
+    yield 는 (종류, 내용) 이다. 마지막 한 번만 종류가 "result" 이고 Result 가 온다.
+
+        ("generate", {"attempt": 1, ...})
+        ("verify",   {"ok": False, "problems": [...]})
+        ("generate", {"attempt": 2, ...})
+        ("verify",   {"ok": True, ...})
+        ("schedule", {"week_count": 4})
+        ("result",   Result(...))
+
+    모델이 JSON 한 덩어리를 뱉으므로 토큰 단위로 흘려보낼 것이 없다.
+    반쯤 온 JSON 으로는 화면에 그릴 게 없다. 그래서 단계만 내보낸다.
+    쓸모는 재생성이 도는 동안 화면이 멈춰 보이지 않게 하는 것이다.
+    """
+    budget, state = _inputs(courses, goal, weeks, hours_per_week, level, max_attempts)
+    final = None
+
+    for mode, chunk in GRAPH.stream(
+        state, config=_config(llm, None, max_attempts),
+        stream_mode=["updates", "values"],
+    ):
+        if mode == "values":
+            final = chunk          # 마지막 것이 최종 상태다
+            continue
+        for node, upd in chunk.items():
+            if node == "generate":
+                yield node, {
+                    "attempt": upd["attempts"],
+                    "selected": len(upd["selected"]),
+                    "tokens": {"input": upd["tok_in"], "output": upd["tok_out"]},
+                }
+            elif node == "verify":
+                yield node, {
+                    "ok": not upd["problems"],
+                    "problems": upd["problems"],
+                    "selected": len(upd["valid"]),
+                    "total_hours": upd["total_hours"],
+                }
+            elif node == "schedule":
+                yield node, {"week_count": len(upd["packed"])}
+
+    yield "result", _result(final, courses, budget)
