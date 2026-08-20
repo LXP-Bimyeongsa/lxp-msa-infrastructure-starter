@@ -1,5 +1,5 @@
 """
-scripts/build_corpus.py — 학습 자료를 3단계 원본 규약으로 변환한다
+scripts/build_corpus.py: 학습 자료를 3단계 원본 규약으로 변환한다
 
 이 파일의 역할: potenup 학습 자료(장/절/예제)를 courses/ 디렉터리 규약과 프론트매터로 옮긴다.
 → scripts/init_vectorstore.py 가 그 결과를 읽어 색인한다
@@ -38,7 +38,7 @@ COURSES_DIR = RAW_DIR / "courses"
 CHAPTER_RE = re.compile(r"^(\d{2})_(.+)$")
 
 
-# 1. 언어 판별 — 자동 판별한 값은 반드시 리포트에 남긴다.
+# 1. 언어 판별: 자동 판별한 값은 반드시 리포트에 남긴다.
 # 조용히 넘어가면 나중에 검색이 안 될 때 원인을 못 찾는다 (3단계 문서 5장)
 def detect_lang(text: str) -> str:
     hangul = len(re.findall(r"[가-힣]", text))
@@ -67,7 +67,7 @@ def write_doc(path: Path, meta: dict, body: str) -> None:
     path.write_text("\n".join(lines), encoding="utf-8")
 
 
-# 2. 예제 파일 가르기 — docstring 은 무엇을 만드는지, 코드는 어떻게 만드는지다
+# 2. 예제 파일 가르기: docstring 은 무엇을 만드는지, 코드는 어떻게 만드는지다
 def split_example(text: str) -> tuple[str, str]:
     m = re.match(r'\s*"""(.*?)"""(.*)', text, re.DOTALL)
     if not m:
@@ -176,7 +176,7 @@ def main() -> None:
     print(f"원본   : {args.source}")
     print(f"출력   : {COURSES_DIR}")
     print(f"파일   : {len(report)}개 (공개 {len(pub)} · 제한 {len(res)})")
-    print(f"글자수 : {total:,} — 800자 기준 약 {total // 800}조각")
+    print(f"글자수 : {total:,}, 800자 기준 약 {total // 800}조각")
     print(f"언어   : ko {sum(1 for r in report if r['lang'] == 'ko')} · "
           f"en {sum(1 for r in report if r['lang'] == 'en')}")
 

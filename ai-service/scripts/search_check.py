@@ -1,5 +1,5 @@
 """
-scripts/search_check.py — 색인이 쓸 만한지 눈으로 본다
+scripts/search_check.py: 색인이 쓸 만한지 눈으로 본다
 
 이 파일의 역할: 질의 하나를 넣어 조각이 돌아오는지, 제한 조각이 새지 않는지 본다.
 → scripts/init_vectorstore.py 가 만든 색인을 읽는다
@@ -18,13 +18,8 @@ from langchain_chroma import Chroma
 
 sys.stdout.reconfigure(encoding="utf-8")
 
-from app.core.config import (
-    CHROMA_DIR,
-    COLLECTION_NAME,
-    INDEX_MARKER,
-    TOP_K,
-    get_embeddings,
-)
+from app.core.config import CHROMA_DIR, COLLECTION_NAME, INDEX_MARKER, TOP_K, get_embeddings
+from app.tools.rag import learner_filter
 
 
 def open_store() -> Chroma:
@@ -35,15 +30,6 @@ def open_store() -> Chroma:
         embedding_function=get_embeddings(),
         persist_directory=str(CHROMA_DIR),
     )
-
-
-# 1. 학습자 검색 — 제한 조각을 질의 조건으로 뺀다.
-# 가져온 뒤 걸러내지 않는다. 한 곳만 빠뜨려도 뚫리기 때문이다
-def learner_filter(course_id: str | None) -> dict:
-    conds = [{"visibility": {"$eq": "public"}}]
-    if course_id:
-        conds.append({"course_id": {"$eq": course_id}})
-    return conds[0] if len(conds) == 1 else {"$and": conds}
 
 
 def show(title: str, hits) -> None:

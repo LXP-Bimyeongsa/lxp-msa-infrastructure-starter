@@ -1,5 +1,5 @@
 """
-app/main.py — FastAPI 진입점
+app/main.py: FastAPI 진입점
 
 이 파일의 역할: 앱을 만들고, 라우터를 붙이고, 기동 시 색인 상태를 알린다.
 → uv run uvicorn app.main:app --reload --port 8086
@@ -29,7 +29,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-# 1. 수명주기 — 색인이 없어도 서버는 뜬다
+# 1. 수명주기: 색인이 없어도 서버는 뜬다
 # 서버가 뜨는 것과 색인이 준비되는 것을 분리해야, 이후 문제가 어느 쪽인지 구분된다
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -55,7 +55,7 @@ app = FastAPI(
 app.include_router(tutor_router, prefix="/api/ai")
 
 
-# 2. 상태 확인 — 인증에서 빼는 경로다
+# 2. 상태 확인: 인증에서 빼는 경로다
 # 나중에 붙일 Prometheus 스크레이프와 Consul 헬스체크가 이 경로를 쓴다
 @app.get("/health", response_model=HealthResponse, tags=["System"])
 def health() -> HealthResponse:
