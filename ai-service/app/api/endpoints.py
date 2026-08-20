@@ -5,14 +5,20 @@ app/api/endpoints.py: 튜터 API
 → app/main.py 가 prefix="/api/ai" 로 등록한다
 확인: X-Member-Id 를 넣은 GET /api/ai/ping 이 200, 없으면 401
 
-지금은 ping 하나뿐이다. 질문·응답 엔드포인트는 S7 에서 붙인다.
-그래프가 먼저 돌아야 한다. API 부터 만들면 껍데기만 있고 확인할 게 없다
+스트리밍은 아직 없다. 동기 응답 하나다. SSE 는 나중 작업이다
 """
+
+import logging
 
 from fastapi import APIRouter, Depends
 
+from app.core.config import RECURSION_LIMIT
 from app.core.security import require_member_id
-from app.schema.models import PingResponse
+from app.graph.builder import build_graph
+from app.schema.models import ChatRequest, ChatResponse, PingResponse
+from app.tools.rag import is_ready
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -21,3 +27,43 @@ router = APIRouter()
 @router.get("/ping", response_model=PingResponse, tags=["Tutor"])
 def ping(member_id: int = Depends(require_member_id)) -> PingResponse:
     return PingResponse(message="pong", member_id=member_id)
+
+
+# 2. 질문
+@router.post("/chat", response_model=ChatResponse, tags=["Tutor"])
+def chat(request: ChatRequest, member_id: int = Depends(require_member_id)) -> ChatResponse:
+    # 색인이 없는 것은 오류가 아니라 모름 응답이다. 준비 안 된 강의라고 안내하는 게 맞다
+    if not is_ready():
+        logger.warning("색인이 준비되지 않았다. 모름 응답으로 답한다")
+        return ChatResponse(
+            route="NO_EVIDENCE",
+            answer="아직 이 강의의 학습 자료가 준비되지 않았다. 강사에게 문의하는 것을 권한다.",
+            citations=[],
+            intent="",
+            top_score=0.0,
+        )
+
+    state = build_graph().invoke(
+        {
+            "member_id": member_id,
+            "question": request.question,
+            "course_id": request.course_id,
+            "lang": request.lang,
+        },
+        {"recursion_limit": RECURSION_LIMIT},
+    )
+
+    # 가드레일에 걸린 것은 응답에 싣지 않는다. 왜 막혔는지 알려주면 우회 방법을 알려주는 셈이다
+    if state.get("blocked"):
+        logger.warning("가드레일 차단: %s", state["blocked"])
+
+    return ChatResponse(
+        route=state["route"],
+        answer=state["answer"],
+        citations=[
+            {k: c[k] for k in ("course_id", "seq", "source_path", "score")}
+            for c in state.get("citations", [])
+        ],
+        intent=state.get("intent", ""),
+        top_score=state.get("top_score", 0.0),
+    )
