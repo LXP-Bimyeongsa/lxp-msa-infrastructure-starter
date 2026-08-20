@@ -14,7 +14,6 @@ JVM이 아니라서 config-server의 REST API를 직접 호출한다.
 
 import logging
 import os
-from pathlib import Path
 
 import httpx
 
@@ -66,19 +65,6 @@ class Settings:
     @property
     def log_dir(self) -> str:
         return os.environ.get("LOG_DIR", "./logs")
-
-    @property
-    def docs_dir(self) -> Path:
-        """규정 문서 디렉터리.
-
-        컨테이너에서는 org-qa-chatbot/docs 를 읽기 전용으로 마운트해 받는다.
-        문서를 이미지에 굽지 않는 이유는 14번 규정 재로드다. 런타임에 다시 읽을 수
-        있어야 재배포 없이 개정을 반영할 수 있다.
-        """
-        if v := os.environ.get("AI_DOCS_DIR"):
-            return Path(v)
-        # 로컬 실행 기본값. 저장소 안에서 그대로 돌 수 있게 한다.
-        return Path(__file__).resolve().parents[2] / "org-qa-chatbot" / "docs"
 
     # ── 모델 호출 (10번에서 사용) ──────────────────────────
     @property

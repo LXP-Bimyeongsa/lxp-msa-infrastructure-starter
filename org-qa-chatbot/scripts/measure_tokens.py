@@ -15,10 +15,8 @@ import os
 import sys
 from pathlib import Path
 
-from _shared import DOCS_DIR  # noqa: E402  (sys.path를 먼저 손댄다)
-
-from app.prompt import SYSTEM_INSTRUCTION, build_prompt  # noqa: E402
-from app.regulations import load as load_regulations  # noqa: E402
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from prompt import SYSTEM_INSTRUCTION, build_prompt, load_context  # noqa: E402
 
 # gemini-2.5-* 는 신규 사용자에게 더 이상 제공되지 않는다(404). 3.x 계열을 쓴다.
 # `-latest` 별칭은 뒤에서 모델이 바뀌어 회차 간 지표 비교가 무효가 되므로 쓰지 않는다.
@@ -78,7 +76,7 @@ def main():
         list_models(client)
         return
 
-    context = load_regulations(DOCS_DIR).context
+    context = load_context()
     prompt = build_prompt(args.question, context)
 
     def count(text):

@@ -25,13 +25,11 @@ import time
 from collections import Counter
 from pathlib import Path
 
-from _shared import DOCS_DIR, ROOT  # noqa: E402  (sys.path를 먼저 손댄다)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from prompt import SYSTEM_INSTRUCTION, build_prompt, load_context, split_answer  # noqa: E402
 
-# 프롬프트와 청킹은 ai-service가 소유한다. 여기서 복사본을 쓰면 평가 결과가
-# 운영과 무관해진다.
-from app.prompt import SYSTEM_INSTRUCTION, build_prompt, split_answer  # noqa: E402
-from app.regulations import load as load_regulations  # noqa: E402
-
+ROOT = Path(__file__).resolve().parent.parent
+CHUNKS_PATH = ROOT / "data" / "chunks.jsonl"
 RESULTS_DIR = ROOT / "eval_results"
 
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
@@ -178,13 +176,10 @@ def provenance(model, context):
 
 
 def load_chunk_ids():
-    """docs/ 를 지금 청킹한 결과를 쓴다. chunks.jsonl 파일을 읽지 않는다.
-
-    파일을 거치면 오래된 chunks.jsonl 로 채점하는 사고가 생긴다. 규정을 고치고
-    build_index.py 를 다시 돌리는 것을 잊으면, 존재하는 청크를 '없는 청크ID'로
-    세거나 그 반대가 된다.
-    """
-    return set(load_regulations(DOCS_DIR).chunk_ids)
+    if not CHUNKS_PATH.exists():
+        raise SystemExit("chunks.jsonl이 없습니다. build_index.py를 먼저 실행하세요.")
+    with CHUNKS_PATH.open(encoding="utf-8") as f:
+        return {json.loads(line)["chunk_id"] for line in f if line.strip()}
 
 
 def score_item(item, raw_answer, chunk_ids):
@@ -446,7 +441,7 @@ def main():
         items = items[:args.limit]
 
     chunk_ids = load_chunk_ids()
-    context = load_regulations(DOCS_DIR).context
+    context = load_context()
     client = get_client()
     interval = 60.0 / args.rpm
     est = len(items) * interval / 60 * (2 if args.judge else 1)
