@@ -62,3 +62,19 @@ def search(query: str, course_id: str | None = None, k: int = TOP_K) -> list[dic
         }
         for doc, score in hits
     ]
+
+
+# 4. 강의 목차
+# 의도 분류가 "이 강의 범위인가" 를 판단하려면 강의에 무엇이 있는지 알아야 한다.
+# 없이 물으면 모델은 "일반적인 기술 질문인가" 를 판단하고, 카프카도 쿠버네티스도
+# 그럴듯한 질문이라 CONCEPT 으로 통과시킨다
+@lru_cache(maxsize=32)
+def course_outline(course_id: str | None) -> str:
+    if not course_id:
+        return "(강의가 지정되지 않음)"
+    got = get_store().get(where=learner_filter(course_id), include=["metadatas"])
+    paths = sorted({m["source_path"] for m in got["metadatas"]})
+    if not paths:
+        return "(이 강의의 자료가 없음)"
+    # 파일 경로가 곧 주제 목록이다. 임베딩을 부르지 않으므로 비용이 없다
+    return "\n".join(f"- {p}" for p in paths)
