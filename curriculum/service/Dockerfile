@@ -13,6 +13,11 @@ COPY curriculum/roadmap/      /app/curriculum/roadmap/
 COPY curriculum/service/      /app/curriculum/service/
 COPY curriculum/data/         /app/curriculum/data/
 
+# 루트로 돌리지 않는다. 이 서비스는 gateway 뒤에서 외부 입력(목표 문자열)을
+# 받아 외부 API 를 부른다. 컨테이너가 뚫렸을 때 루트인 것과 아닌 것은 다르다.
+RUN useradd --create-home --uid 10001 app && chown -R app:app /app
+USER app
+
 EXPOSE 8087
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
