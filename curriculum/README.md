@@ -409,6 +409,7 @@ API 키는 루트 `.env` 의 `GEMINI_API_KEY` 를 읽는다. 없으면 기동은
 
 | | |
 |---|---|
+| `GET /` | 촬영용 데모 콘솔 |
 | `GET /actuator/health` | compose healthcheck 와 Consul |
 | `GET /actuator/prometheus` | 지표 스크레이프 (D-62) |
 | `GET /api/ai/curriculum/catalog` | 고를 수 있는 강의 목록 |
@@ -474,6 +475,36 @@ SSE             start 0.05s -> generate 1.46s -> verify 실패 65h>40h
 
 한글 본문을 `curl -d` 로 바로 넘기면 Windows 셸에서 깨져 422 가 난다.
 파일로 두고 `--data-binary @req.json` 을 쓴다.
+
+### 데모 콘솔
+
+`http://localhost:8087/` 을 열면 화면이 나온다. 컨테이너 하나만 띄우면 된다.
+
+```text
+왼쪽   목표·기간·주당시간·수준 입력
+가운데 그래프가 도는 것 (generate -> verify -> 되돌아감 -> 통과) + 원문 이벤트
+오른쪽 주차별 결과와 고른 이유
+```
+
+**촬영용이다.** 실제 사용자 화면은 나중에 `frontend/client` 에 붙인다.
+`frontend/demo-console` 의 팔레트를 그대로 썼고 빌드 도구가 없다.
+
+**이 서비스가 직접 준다.** gateway 라우팅이 없어서 브라우저가 8087 을 직접
+부르는데, 페이지를 다른 포트에 두면 CORS 를 열어야 한다. 같은 오리진에서 주면
+그 문제가 없다. gateway 를 붙이는 날 `frontend/` 로 옮기면 된다.
+
+보여줄 것은 **재생성이 도는 순간**이다. `4주 x 10h` 로 넣으면 예산이 빠듯해
+거의 매번 걸린다.
+
+```text
+verify  실패 · 기간 초과: 65h > 40h     빨강
+  ↺ generate 로 되돌아간다              노랑
+generate 시도 2
+verify  통과 · 1개 40h                  초록
+```
+
+"한 번에 받기" 버튼은 비교용이다. 같은 일을 스트리밍 없이 부르고 걸린 시간을
+보여준다. 그동안 화면이 아무것도 못 보여준다는 것이 SSE 를 넣은 이유다.
 
 ### 한 요청의 시간 상한
 
