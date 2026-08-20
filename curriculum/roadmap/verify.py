@@ -5,10 +5,36 @@
 """
 
 
+def pick(courses, selected):
+    """쓸 수 있는 (강의, 이유) 만 골라낸다.
+
+    번호를 고르는 것은 모델이라 없거나·정수가 아니거나·범위 밖일 수 있다.
+    거르는 자리를 여기 하나로 둔다. 두 군데서 각자 거르면 강의 목록과 이유
+    목록의 길이가 어긋나 짝이 밀린다.
+    """
+    out = []
+    for s in selected:
+        i = s.get("index") if isinstance(s, dict) else None
+        # bool 은 int 의 하위형이라 따로 막는다. True 가 1번 강의가 되면 안 된다.
+        if isinstance(i, int) and not isinstance(i, bool) and 0 <= i < len(courses):
+            out.append((courses[i], s.get("reason", "")))
+    return out
+
+
 def check(courses, selected, budget_hours):
     """반환: (유효한 강의 목록, 총 시간, 문제 목록)"""
     problems = []
-    indices = [s["index"] for s in selected]
+
+    bad = [s for s in selected
+           if not isinstance(s, dict)
+           or not isinstance(s.get("index"), int)
+           or isinstance(s.get("index"), bool)]
+    if bad:
+        problems.append(f"번호가 없거나 정수가 아닌 항목: {len(bad)}개")
+
+    indices = [s["index"] for s in selected
+               if isinstance(s, dict) and isinstance(s.get("index"), int)
+               and not isinstance(s["index"], bool)]
 
     out_of_range = [i for i in indices if not (0 <= i < len(courses))]
     if out_of_range:
@@ -18,7 +44,7 @@ def check(courses, selected, budget_hours):
     if dupes:
         problems.append(f"같은 강의를 여러 번 골랐다: {sorted(dupes)}")
 
-    valid = [courses[i] for i in indices if 0 <= i < len(courses)]
+    valid = [c for c, _ in pick(courses, selected)]
     total = sum(c["estimatedHours"] for c in valid)
     if total > budget_hours:
         problems.append(f"기간 초과: {total}h > {budget_hours}h")

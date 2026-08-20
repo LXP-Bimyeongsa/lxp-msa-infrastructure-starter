@@ -112,9 +112,7 @@ def check(state: State, config) -> dict:
 
 def schedule(state: State, config) -> dict:
     """고른 순서를 주당 시간에 맞춰 주차로 나눈다. 긴 강의는 여러 주에 걸친다."""
-    reasons = [s.get("reason", "") for s in state["selected"]
-               if 0 <= s["index"] < len(state["courses"])]
-    pairs = list(zip(state["valid"], reasons))
+    pairs = verify.pick(state["courses"], state["selected"])
     return {"packed": pack_weeks(pairs, state["hours_per_week"])}
 
 
@@ -144,6 +142,12 @@ GRAPH = _compile()
 
 
 def _inputs(courses, goal, weeks, hours_per_week, level, max_attempts):
+    # 서비스는 pydantic 이 막지만 CLI 와 평가 러너는 안 막는다.
+    # hours_per_week 가 0 이면 pack_weeks 가 한 주에 0시간씩 담아 무한루프가 된다.
+    for name, v in (("weeks", weeks), ("hours_per_week", hours_per_week),
+                    ("max_attempts", max_attempts)):
+        if not isinstance(v, int) or v < 1:
+            raise ValueError(f"{name} 는 1 이상의 정수여야 한다: {v!r}")
     budget = weeks * hours_per_week
     return budget, {
         "courses": courses, "goal": goal, "budget_hours": budget,
@@ -162,12 +166,13 @@ def _config(llm, on_retry, max_attempts):
 
 
 def _result(final, courses, budget) -> Result:
-    reasons = [s.get("reason", "") for s in final["selected"]
-               if 0 <= s["index"] < len(courses)]
+    # 거르는 규칙은 verify.pick 하나만 쓴다. 여기서 따로 거르면 강의와 이유의
+    # 짝이 밀릴 수 있다.
+    pairs = verify.pick(courses, final["selected"])
     packed = final["packed"]
     return Result(
         goal_summary=final["goal_summary"],
-        courses=list(zip(final["valid"], reasons)),
+        courses=pairs,
         weeks=packed,
         total_hours=final["total_hours"],
         budget_hours=budget,

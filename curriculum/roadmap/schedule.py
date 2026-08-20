@@ -17,6 +17,9 @@ def pack_weeks(pairs, hours_per_week):
     입력:  [(course, reason), ...]
     반환:  [[(course, 이번주에 들을 시간, 전체 시간, reason), ...], ...]
     """
+    if not isinstance(hours_per_week, int) or hours_per_week < 1:
+        # 0 이면 한 주에 0시간씩 담아 영원히 안 끝난다.
+        raise ValueError(f"hours_per_week 는 1 이상이어야 한다: {hours_per_week!r}")
     weeks, current, used = [], [], 0
     for course, reason in pairs:
         remaining = course["estimatedHours"]
