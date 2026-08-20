@@ -52,14 +52,6 @@ class LLMProvider(Protocol):
         ...
 
 
-async def collect(provider: LLMProvider, system: str, prompt: str) -> str:
-    """스트림을 다 모아 문자열로 만든다. 13번 이전까지 라우터가 쓰는 경로."""
-    parts: list[str] = []
-    async for piece in provider.generate_stream(system, prompt):
-        parts.append(piece)
-    return "".join(parts).strip()
-
-
 class GeminiProvider:
     """google-genai 구현체."""
 
