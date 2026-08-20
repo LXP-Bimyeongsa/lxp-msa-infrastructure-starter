@@ -97,6 +97,7 @@ class WeekOut(BaseModel):
 
 
 class RoadmapResponse(BaseModel):
+    model: str            # 실제로 답한 모델. 바꿔 쓰면 결과가 달라지므로 같이 내려보낸다
     goalSummary: str
     courses: list[CourseOut]
     weeks: list[WeekOut]
@@ -115,7 +116,9 @@ def console():
 
 @app.get("/actuator/health")
 def health():
-    return {"status": "UP", "courses": len(COURSES)}
+    # 어느 모델로 도는지 여기서 바로 보이게 한다. 무료 한도가 모델별이라
+    # 자주 갈아끼우는데, 컨테이너에 들어가야만 알 수 있으면 확인이 안 된다.
+    return {"status": "UP", "courses": len(COURSES), "model": roadmap.DEFAULT_MODEL}
 
 
 @app.get("/actuator/prometheus")
@@ -136,7 +139,7 @@ def create_roadmap(req: RoadmapRequest):
     try:
         llm = roadmap.Gemini()
     except roadmap.LLMError as e:
-        metrics.REQUESTS.labels(outcome="unavailable").inc()
+        metrics.REQUESTS.labels(outcome="unavailable", model=roadmap.DEFAULT_MODEL).inc()
         raise HTTPException(status_code=503, detail=f"모델을 부를 수 없다: {e.detail}")
 
     started = time.perf_counter()
@@ -145,17 +148,18 @@ def create_roadmap(req: RoadmapRequest):
                           req.hoursPerWeek, req.level, MAX_ATTEMPTS,
                           deadline_seconds=DEADLINE_SECONDS)
     except roadmap.LLMError as e:
-        metrics.record_error(e.status)
+        metrics.record_error(e.status, llm.model)
         # 429 는 무료 티어 한도라 잠시 뒤 다시 부르면 된다. 그대로 내려보낸다.
         status = 429 if e.status == 429 else 502
         raise HTTPException(status_code=status, detail=e.detail[:500])
 
-    metrics.record(r, time.perf_counter() - started)
-    return to_response(r)
+    metrics.record(r, time.perf_counter() - started, llm.model)
+    return to_response(r, llm.model)
 
 
-def to_response(r) -> RoadmapResponse:
+def to_response(r, model) -> RoadmapResponse:
     return RoadmapResponse(
+        model=model,
         goalSummary=r.goal_summary,
         courses=[
             CourseOut(title=c["title"], track=c["track"], level=c["level"],
@@ -204,13 +208,14 @@ def stream_roadmap(req: RoadmapRequest):
     try:
         llm = roadmap.Gemini()
     except roadmap.LLMError as e:
-        metrics.REQUESTS.labels(outcome="unavailable").inc()
+        metrics.REQUESTS.labels(outcome="unavailable", model=roadmap.DEFAULT_MODEL).inc()
         raise HTTPException(status_code=503, detail=f"모델을 부를 수 없다: {e.detail}")
 
     def events():
         started = time.perf_counter()
         yield sse("start", {
             "goal": req.goal,
+            "model": llm.model,
             "budgetHours": req.weeks * req.hoursPerWeek,
             "weeks": req.weeks,
             "catalog": len(COURSES),
@@ -223,12 +228,12 @@ def stream_roadmap(req: RoadmapRequest):
                 deadline_seconds=DEADLINE_SECONDS,
             ):
                 if kind == "result":
-                    metrics.record(data, time.perf_counter() - started)
-                    yield sse("result", to_response(data).model_dump())
+                    metrics.record(data, time.perf_counter() - started, llm.model)
+                    yield sse("result", to_response(data, llm.model).model_dump())
                 else:
                     yield sse(kind, data)
         except roadmap.LLMError as e:
-            metrics.record_error(e.status)
+            metrics.record_error(e.status, llm.model)
             # 429 는 무료 티어 한도라 잠시 뒤 다시 부르면 된다.
             yield sse("error", {"status": e.status, "detail": e.detail[:500]})
 

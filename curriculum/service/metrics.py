@@ -17,7 +17,9 @@ from prometheus_client import Counter, Gauge, Histogram
 REQUESTS = Counter(
     "curriculum_roadmap_requests_total",
     "로드맵 생성 요청 수",
-    ["outcome"],          # ok / quota / model_error / unavailable
+    # 모델 라벨을 붙인다. 무료 한도가 모델별이라 모델을 갈아끼우며 쓰는데,
+    # 어느 모델이 답했는지 안 남기면 결과가 흔들려도 원인을 못 찾는다.
+    ["outcome", "model"],   # ok / quota / model_error / unavailable
 )
 
 LLM_CALLS = Counter(
@@ -54,9 +56,9 @@ CATALOG = Gauge(
 )
 
 
-def record(result, seconds):
+def record(result, seconds, model):
     """성공한 요청 하나를 기록한다."""
-    REQUESTS.labels(outcome="ok").inc()
+    REQUESTS.labels(outcome="ok", model=model).inc()
     LLM_CALLS.inc(result.attempts)
     DURATION.observe(seconds)
     TOKENS.labels(direction="input").inc(result.tokens.get("input", 0))
@@ -68,6 +70,7 @@ def record(result, seconds):
         UNRESOLVED.inc()
 
 
-def record_error(status):
+def record_error(status, model):
     # 429 는 무료 티어 한도라 서버 잘못이 아니다. 따로 센다.
-    REQUESTS.labels(outcome="quota" if status == 429 else "model_error").inc()
+    REQUESTS.labels(outcome="quota" if status == 429 else "model_error",
+                    model=model).inc()
