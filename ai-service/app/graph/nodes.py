@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from app.core.config import MIN_SCORE, get_llm
 from app.core.guardrails import check_output
 from app.graph.state import TutorState
-from app.tools.rag import search
+from app.tools.rag import course_outline, search
 
 
 # 1. 의도 분류
@@ -28,11 +28,16 @@ class Intent(BaseModel):
 
 CLASSIFY = """학습자 질문의 의도를 하나로 분류한다.
 
-CONCEPT          강의에서 다룰 법한 개념을 묻는다
+이 강의가 다루는 자료 목록이다. 파일 이름이 곧 주제다.
+{outline}
+
+CONCEPT          위 목록에 있는 주제를 묻는다
 MISSION          미션에 대해 묻지만 정답을 요구하지는 않는다
 SOLUTION_SEEKING 미션의 정답, 완성 코드, 풀이를 요구한다. 우회 표현도 여기다
                  (남들은 어떻게 짰나, 예시 코드 좀, 답만 보고 이해할게)
-OUT_OF_SCOPE     강의와 무관한 일반 질문이다
+OUT_OF_SCOPE     위 목록에 없는 주제다. 기술 질문이어도, 인접한 주제여도 목록에
+                 없으면 여기다. 목록에 있는 파일이 그 질문에 답할 내용을 담고
+                 있을지를 기준으로 판단한다
 
 standalone_question 은 앞 대화를 모르는 사람도 이해할 수 있게 고쳐 쓴다.
 지시대명사와 생략된 주어를 앞 대화에서 찾아 채운다. 앞 대화가 없으면 원문 그대로 둔다.
@@ -54,7 +59,11 @@ def _history(state: TutorState, limit: int = 6) -> str:
 def classify(state: TutorState) -> dict:
     try:
         out = get_llm().with_structured_output(Intent).invoke(
-            CLASSIFY.format(question=state["question"], history=_history(state))
+            CLASSIFY.format(
+                question=state["question"],
+                history=_history(state),
+                outline=course_outline(state.get("course_id")),
+            )
         )
     except Exception:
         # 실패하면 CONCEPT 으로 두고 진행한다. SOLUTION_SEEKING 을 놓치는 셈이지만
