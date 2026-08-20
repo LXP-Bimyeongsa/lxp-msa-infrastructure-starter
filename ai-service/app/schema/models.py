@@ -35,9 +35,12 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     course_id: str | None = None
     lang: str = "ko"
+    # 같은 값을 다시 보내면 앞 대화를 이어간다. 안 주면 새 대화다
+    thread_id: str | None = None
 
 
 class ChatResponse(BaseModel):
+    thread_id: str
     # route 를 먼저 둔다. 클라이언트가 모름 응답과 힌트 응답일 때 화면을 다르게 그린다
     route: str  # ANSWER · HINT · NO_EVIDENCE · OUT_OF_SCOPE
     answer: str

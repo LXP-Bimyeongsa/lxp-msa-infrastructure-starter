@@ -29,6 +29,9 @@ CHROMA_DIR = DATA_DIR / "chroma"  # 색인. S1 에서 생성된다
 # 준비된 것으로 보인다. 실제로 429 로 50/633 에서 끊겼을 때 그렇게 보였다
 INDEX_MARKER = CHROMA_DIR / ".complete"
 
+# 그래프 재개용 저장소. 대화 이력 조회는 나중에 관계형 테이블로 따로 만든다
+CHECKPOINT_DB = DATA_DIR / "checkpoints.sqlite"
+
 # 강의별로 컬렉션을 나누지 않는다. 강의가 늘 때마다 컬렉션이 늘면 관리가 안 되고,
 # course_id 메타 필터로 같은 효과가 나온다 (2단계 문서 3.1)
 COLLECTION_NAME = "lxp_knowledge"

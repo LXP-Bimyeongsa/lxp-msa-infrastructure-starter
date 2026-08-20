@@ -12,11 +12,12 @@ scripts/ask.py: 그래프를 한 번 돌려본다
 
 import argparse
 import sys
+from uuid import uuid4
 
 sys.stdout.reconfigure(encoding="utf-8")
 
 from app.core.config import RECURSION_LIMIT
-from app.graph.builder import build_graph
+from app.graph.builder import build_graph, new_turn
 from app.tools.rag import is_ready
 
 
@@ -24,15 +25,20 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("question")
     ap.add_argument("--course", default=None)
+    ap.add_argument("--thread", default=None, help="같은 값을 주면 앞 대화를 이어간다")
     args = ap.parse_args()
 
     if not is_ready():
         raise SystemExit("색인이 없다. init_vectorstore.py 를 먼저 돌린다")
 
+    # thread_id 를 안 주면 매번 새 실행이다. 고정 값을 쓰면 지난 실행이 이어져
+    # 재현이 안 되므로, 이어가려는 의도가 있을 때만 준다
+    thread = args.thread or uuid4().hex[:8]
     state = build_graph().invoke(
-        {"question": args.question, "course_id": args.course, "lang": "ko"},
-        {"recursion_limit": RECURSION_LIMIT},
+        new_turn(args.question, args.course),
+        {"configurable": {"thread_id": thread}, "recursion_limit": RECURSION_LIMIT},
     )
+    print(f"thread     : {thread}")
 
     print(f"route      : {state['route']}")
     print(f"intent     : {state.get('intent', '-')}")
