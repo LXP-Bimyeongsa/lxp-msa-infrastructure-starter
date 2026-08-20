@@ -48,7 +48,9 @@ def score(case, result, courses):
     # 카탈로그에 없는 만큼을 관계없는 강의로 채우라는 요구가 된다.
     floor_level = max(exp.get("minLevel", 1), case["level"] - 1)
     avail = roadmap.available_hours(courses, exp.get("tracks"), floor_level)
-    ceiling = min(result.budget_hours, avail) if avail else result.budget_hours
+    # avail 이 0 이면 "그 트랙에 쓸 강의가 없다" 는 뜻이라 None 과 다르다.
+    # if avail 로 쓰면 0 이 None 처럼 취급돼 예산 대비로 재게 된다.
+    ceiling = min(result.budget_hours, avail) if avail is not None else result.budget_hours
     usage = result.total_hours / ceiling if ceiling else 0
 
     ratio = None
@@ -118,12 +120,20 @@ def main():
     print(f"카탈로그 {len(courses)}개 · 케이스 {len(cases)}건 · 모델 {llm.model}")
     print("=" * 78)
 
-    results, tok_in, tok_out = [], 0, 0
+    results, errors, tok_in, tok_out = [], [], 0, 0
     for i, case in enumerate(cases):
         if i:
             time.sleep(args.sleep)
-        r = roadmap.build(courses, llm, case["goal"], case["weeks"],
-                          case["hoursPerWeek"], case["level"], args.max_attempts)
+        try:
+            r = roadmap.build(courses, llm, case["goal"], case["weeks"],
+                              case["hoursPerWeek"], case["level"], args.max_attempts)
+        except roadmap.LLMError as e:
+            # 케이스 하나가 쿼터에 걸렸다고 나머지까지 못 보면 곤란하다.
+            # 여기까지 돈 결과는 살리고 이 케이스만 실패로 적는다.
+            print(f"{case['id']}  실패  {case['goal'][:22]:<24} "
+                  f"[API {e.status}] {str(e.detail)[:60]}")
+            errors.append(case["id"])
+            continue
         fails, metrics = score(case, r, courses)
         results.append((case, r, fails))
         tok_in += r.tokens["input"]
@@ -146,9 +156,11 @@ def main():
     calls = sum(r.attempts for _, r, _ in results)
     print("=" * 78)
     print(f"{passed}/{len(results)} 통과 · 첫 시도 통과 {first_try}/{len(results)} · 호출 {calls}회")
+    if errors:
+        print(f"API 오류로 못 돈 케이스 {len(errors)}건: {', '.join(errors)}")
     print(f"토큰 입력 {tok_in:,} / 출력 {tok_out:,}")
 
-    if passed < len(results):
+    if passed < len(results) or errors:
         sys.exit(2)
 
 

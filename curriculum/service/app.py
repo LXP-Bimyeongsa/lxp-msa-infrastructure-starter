@@ -34,7 +34,23 @@ app = FastAPI(title="curriculum-roadmap", version="0.1.0")
 # 나중에 course-service 목록 API 로 바꾸면 load_courses() 만 갈아끼운다.
 COURSES = roadmap.load_courses()
 
-MAX_ATTEMPTS = int(os.environ.get("ROADMAP_MAX_ATTEMPTS", "3"))
+def _max_attempts():
+    """잘못된 값이면 기동 자체를 막는다.
+
+    int() 가 그냥 터지면 트레이스백만 남아 무엇이 잘못됐는지 안 보이고,
+    0 이나 음수를 통과시키면 요청이 올 때까지 멀쩡해 보인다.
+    """
+    raw = os.environ.get("ROADMAP_MAX_ATTEMPTS", "3")
+    try:
+        n = int(raw)
+    except ValueError:
+        raise RuntimeError(f"ROADMAP_MAX_ATTEMPTS 가 정수가 아니다: {raw!r}")
+    if n < 1:
+        raise RuntimeError(f"ROADMAP_MAX_ATTEMPTS 는 1 이상이어야 한다: {n}")
+    return n
+
+
+MAX_ATTEMPTS = _max_attempts()
 
 metrics.CATALOG.set(len(COURSES))
 
