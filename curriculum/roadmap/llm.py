@@ -40,6 +40,8 @@ class Gemini:
         self.temperature = temperature
         if not self.api_key:
             raise LLMError(0, "GEMINI_API_KEY 가 없다")
+        if max_attempts < 1:
+            raise ValueError(f"max_attempts 는 1 이상이어야 한다: {max_attempts}")
 
     def generate(self, prompt):
         """반환: (파싱된 JSON, usage 딕셔너리)"""
@@ -50,17 +52,21 @@ class Gemini:
                 "temperature": self.temperature,
             },
         }).encode("utf-8")
-        url = ENDPOINT.format(model=self.model) + f"?key={self.api_key}"
+        url = ENDPOINT.format(model=self.model)
+        # 키를 쿼리스트링이 아니라 헤더로 보낸다. URL 은 프록시 접근 로그와
+        # 예외 메시지에 통째로 남아서, ?key=... 로 두면 키가 로그에 찍힌다.
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
 
         last = None
         for attempt in range(1, self.max_attempts + 1):
-            req = urllib.request.Request(
-                url, data=body, headers={"Content-Type": "application/json"})
+            req = urllib.request.Request(url, data=body, headers=headers)
             try:
                 with urllib.request.urlopen(req, timeout=120) as resp:
                     payload = json.loads(resp.read())
-                text = payload["candidates"][0]["content"]["parts"][0]["text"]
-                return json.loads(text), payload.get("usageMetadata", {})
+                return self._unwrap(payload), payload.get("usageMetadata", {})
             except urllib.error.HTTPError as e:
                 detail = e.read().decode("utf-8", "replace")
                 last = LLMError(e.code, detail)
@@ -73,3 +79,26 @@ class Gemini:
             time.sleep(2 ** attempt)
 
         raise last
+
+    @staticmethod
+    def _unwrap(payload):
+        """응답 봉투를 벗겨 JSON 을 꺼낸다.
+
+        responseMimeType 을 줘도 모양이 늘 오는 것은 아니다. 안전 필터에 걸리거나
+        토큰 상한에 잘리면 candidates 가 비거나 parts 가 없다. 그대로 인덱싱하면
+        KeyError/IndexError 가 500 으로 나가서 원인이 안 보인다.
+        """
+        try:
+            text = payload["candidates"][0]["content"]["parts"][0]["text"]
+        except (KeyError, IndexError, TypeError):
+            reason = ""
+            cands = payload.get("candidates") or []
+            if cands:
+                reason = cands[0].get("finishReason", "")
+            elif "promptFeedback" in payload:
+                reason = payload["promptFeedback"].get("blockReason", "")
+            raise LLMError(0, f"모델 응답에 본문이 없다 (finishReason={reason or '알 수 없음'})")
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as e:
+            raise LLMError(0, f"모델이 JSON 이 아닌 것을 줬다: {e}")
