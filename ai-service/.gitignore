@@ -30,3 +30,6 @@ data/raw/courses/
 
 # 퀴즈는 개인 학습 기록이다. 저장소에 올리지 않는다
 docs/quiz/
+
+# 체크포인터 저장소. 그래프 재개용이라 다시 만들 수 있다
+data/checkpoints.sqlite

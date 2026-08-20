@@ -9,12 +9,13 @@ app/api/endpoints.py: 튜터 API
 """
 
 import logging
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends
 
 from app.core.config import RECURSION_LIMIT
 from app.core.security import require_member_id
-from app.graph.builder import build_graph
+from app.graph.builder import build_graph, new_turn
 from app.schema.models import ChatRequest, ChatResponse, PingResponse
 from app.tools.rag import is_ready
 
@@ -36,6 +37,7 @@ def chat(request: ChatRequest, member_id: int = Depends(require_member_id)) -> C
     if not is_ready():
         logger.warning("색인이 준비되지 않았다. 모름 응답으로 답한다")
         return ChatResponse(
+            thread_id=request.thread_id or "",
             route="NO_EVIDENCE",
             answer="아직 이 강의의 학습 자료가 준비되지 않았다. 강사에게 문의하는 것을 권한다.",
             citations=[],
@@ -43,14 +45,10 @@ def chat(request: ChatRequest, member_id: int = Depends(require_member_id)) -> C
             top_score=0.0,
         )
 
+    thread_id = request.thread_id or uuid4().hex
     state = build_graph().invoke(
-        {
-            "member_id": member_id,
-            "question": request.question,
-            "course_id": request.course_id,
-            "lang": request.lang,
-        },
-        {"recursion_limit": RECURSION_LIMIT},
+        new_turn(request.question, request.course_id, request.lang, member_id=member_id),
+        {"configurable": {"thread_id": thread_id}, "recursion_limit": RECURSION_LIMIT},
     )
 
     # 가드레일에 걸린 것은 응답에 싣지 않는다. 왜 막혔는지 알려주면 우회 방법을 알려주는 셈이다
@@ -58,6 +56,7 @@ def chat(request: ChatRequest, member_id: int = Depends(require_member_id)) -> C
         logger.warning("가드레일 차단: %s", state["blocked"])
 
     return ChatResponse(
+        thread_id=thread_id,
         route=state["route"],
         answer=state["answer"],
         citations=[

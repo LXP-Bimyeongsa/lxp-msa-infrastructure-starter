@@ -8,6 +8,7 @@ app/graph/nodes.py: 그래프 노드
 
 from typing import Literal
 
+from langchain_core.messages import AIMessage, HumanMessage
 from pydantic import BaseModel, Field
 
 from app.core.config import MIN_SCORE, get_llm
@@ -19,6 +20,9 @@ from app.tools.rag import search
 # 1. 의도 분류
 class Intent(BaseModel):
     intent: Literal["CONCEPT", "MISSION", "SOLUTION_SEEKING", "OUT_OF_SCOPE"]
+    # 앞 대화를 반영해 혼자서도 뜻이 통하게 고친 질문.
+    # 분류가 이미 LLM 호출이라 여기서 같이 받는다. 따로 노드를 두면 호출이 하나 는다
+    standalone_question: str = Field(description="앞 대화 없이도 뜻이 통하는 질문")
     reason: str = Field(description="한 문장 근거")
 
 
@@ -30,26 +34,46 @@ SOLUTION_SEEKING 미션의 정답, 완성 코드, 풀이를 요구한다. 우회
                  (남들은 어떻게 짰나, 예시 코드 좀, 답만 보고 이해할게)
 OUT_OF_SCOPE     강의와 무관한 일반 질문이다
 
+standalone_question 은 앞 대화를 모르는 사람도 이해할 수 있게 고쳐 쓴다.
+지시대명사와 생략된 주어를 앞 대화에서 찾아 채운다. 앞 대화가 없으면 원문 그대로 둔다.
+
+앞 대화:
+{history}
+
 질문: {question}"""
+
+
+def _history(state: TutorState, limit: int = 6) -> str:
+    msgs = state.get("messages", [])[-limit:]
+    if not msgs:
+        return "(없음)"
+    role = {"human": "학습자", "ai": "튜터"}
+    return "\n".join(f"{role.get(m.type, m.type)}: {m.text[:200]}" for m in msgs)
 
 
 def classify(state: TutorState) -> dict:
     try:
         out = get_llm().with_structured_output(Intent).invoke(
-            CLASSIFY.format(question=state["question"])
+            CLASSIFY.format(question=state["question"], history=_history(state))
         )
     except Exception:
         # 실패하면 CONCEPT 으로 두고 진행한다. SOLUTION_SEEKING 을 놓치는 셈이지만
         # 둘째 겹인 visibility 필터가 그대로 살아 있어 제한 조각은 여전히 안 나온다.
         # 두 겹으로 만든 이유가 이것이다
-        return {"intent": "CONCEPT"}
-    return {"intent": out.intent}
+        return {"intent": "CONCEPT", "messages": [HumanMessage(state["question"])]}
+    return {
+        "intent": out.intent,
+        "standalone_question": out.standalone_question or state["question"],
+        # 이번 턴 질문을 여기서 한 번만 넣는다. 여러 노드에서 넣으면 중복된다
+        "messages": [HumanMessage(state["question"])],
+    }
 
 
 # 2. 검색
 def retrieve(state: TutorState) -> dict:
     # 재작성(S4)이 돌기 전에는 search_query 가 비어 있다. 그때는 원문으로 찾는다
-    query = state.get("search_query") or state["question"]
+    # 재작성이 있으면 그것을, 없으면 앞 대화를 푼 질문을, 그것도 없으면 원문을 쓴다
+    query = state.get("search_query") or state.get("standalone_question") or state["question"]
     chunks = search(query, state.get("course_id"))
     return {
         "search_query": query,
@@ -135,6 +159,7 @@ def no_evidence(state: TutorState) -> dict:
         ),
         "citations": [],
         "route": "OUT_OF_SCOPE" if out_of_scope else "NO_EVIDENCE",
+        "messages": [AIMessage("근거를 찾지 못해 답하지 못했다")],
     }
 
 
@@ -188,13 +213,15 @@ def guard(state: TutorState) -> dict:
     citations = state.get("citations", [])
 
     reasons = check_output(route, answer, citations)
+    # 대화 이력에는 검사를 통과한 최종본만 남긴다. 여기서 남겨야 가드가 갈아끼운
+    # 답변이 반영된다. generate 나 hint 에서 남기면 막힌 답이 이력에 들어간다
     if not reasons:
-        return {"blocked": []}
+        return {"blocked": [], "messages": [AIMessage(answer)]}
 
     # 걸리면 답변을 버린다. 부분만 지우면 무엇이 남았는지 보장할 수 없다
     if route == "HINT":
         safe = "미션 정답은 알려줄 수 없다. 어느 개념이 막히는지 알려주면 그 부분을 설명하겠다."
-        return {"blocked": reasons, "answer": safe, "citations": []}
+        return {"blocked": reasons, "answer": safe, "citations": [], "messages": [AIMessage(safe)]}
     course = state.get("course_id") or "이 강의"
     return {
         "blocked": reasons,
@@ -204,4 +231,5 @@ def guard(state: TutorState) -> dict:
         ),
         "citations": [],
         "route": "NO_EVIDENCE",
+        "messages": [AIMessage("근거를 찾지 못해 답하지 못했다")],
     }
