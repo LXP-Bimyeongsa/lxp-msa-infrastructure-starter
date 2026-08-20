@@ -4,6 +4,7 @@
 CLI(`scripts/roadmap.py`)와 평가 러너가 같은 패키지를 쓰므로 동작이 갈리지 않는다.
 
 엔드포인트
+    GET  /                      데모 콘솔 (static/index.html)
     GET  /actuator/health       compose healthcheck 와 Consul
     GET  /actuator/prometheus   지표 스크레이프 (D-62)
     GET  /api/ai/curriculum/catalog
@@ -11,6 +12,11 @@ CLI(`scripts/roadmap.py`)와 평가 러너가 같은 패키지를 쓰므로 동�
     POST /api/ai/curriculum/roadmap/stream   같은 일을 SSE 로 흘려보낸다
 
 gateway 를 거쳐 들어오는 것을 전제한다. 서비스 토큰 검증(D-33)은 아직 없다.
+
+콘솔을 이 서비스가 직접 준다. gateway 라우팅이 없어서 브라우저가 8087 을 직접
+부르는데, 페이지를 다른 포트에 두면 CORS 를 열어야 한다. 같은 오리진에서 주면
+그 문제가 없고 촬영할 때 컨테이너 하나만 띄우면 된다.
+실제 사용자 화면은 나중에 frontend/client 에 붙인다. 이건 개발용 콘솔이다.
 """
 
 import json
@@ -20,7 +26,7 @@ import time
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
@@ -29,6 +35,8 @@ from curriculum import roadmap  # noqa: E402
 from curriculum.service import metrics  # noqa: E402
 
 app = FastAPI(title="curriculum-roadmap", version="0.1.0")
+
+CONSOLE = Path(__file__).resolve().parent / "static" / "index.html"
 
 # 카탈로그는 기동할 때 한 번 읽는다. 43개 2,600자라 메모리에 들고 있어도 무리가 없다.
 # 나중에 course-service 목록 API 로 바꾸면 load_courses() 만 갈아끼운다.
@@ -97,6 +105,12 @@ class RoadmapResponse(BaseModel):
     weekCount: int
     attempts: int
     problems: list[str]
+
+
+@app.get("/", include_in_schema=False)
+def console():
+    """촬영용 데모 콘솔. 정적 파일 한 장이라 빌드 도구가 없다."""
+    return FileResponse(CONSOLE)
 
 
 @app.get("/actuator/health")

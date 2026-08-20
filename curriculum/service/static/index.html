@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>커리큘럼 로드맵 콘솔</title>
+<style>
+  /* 촬영용 화면이다. frontend/demo-console 의 팔레트를 그대로 쓴다.
+     색은 상태(대기·진행·성공·실패)를 구분하는 데만 쓰고, 본문은 뒷자리에서
+     읽을 수 있게 키운다. 보여줄 것은 예쁨이 아니라 그래프가 되돌아가는 순간이다. */
+  :root {
+    --bg:#0f1216; --panel:#171b21; --panel2:#1e232b; --line:#2a313b;
+    --text:#dfe4ea; --dim:#8b95a3; --accent:#4a9eff;
+    --ok:#3fb950; --warn:#d29922; --err:#f85149;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+       font:15px/1.6 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+
+  header{display:flex;align-items:baseline;gap:16px;flex-wrap:wrap;
+         padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+  header h1{margin:0;font-size:16px}
+  header .sub{color:var(--dim);font-size:13px}
+  header .spacer{flex:1}
+  .meta{font-family:var(--mono);font-size:13px;color:var(--dim)}
+  .meta b{color:var(--accent);font-weight:600}
+
+  main{display:grid;grid-template-columns:320px 1fr 1fr;height:calc(100vh - 49px)}
+  @media (max-width:1200px){main{grid-template-columns:1fr;height:auto}}
+  .col{overflow-y:auto;min-width:0;padding:14px}
+  .col.form{border-right:1px solid var(--line)}
+  .col.graph{border-right:1px solid var(--line)}
+
+  h2{margin:0 0 10px;font-size:13px;color:var(--dim);text-transform:uppercase;
+     letter-spacing:.08em;font-weight:600}
+
+  label{display:block;font-size:12.5px;color:var(--dim);margin:12px 0 4px}
+  input,select,textarea{width:100%;padding:9px 11px;border-radius:6px;
+      border:1px solid var(--line);background:var(--panel2);color:var(--text);
+      font:14px/1.4 inherit}
+  textarea{resize:vertical;min-height:58px}
+  .row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  button{font:600 14px/1 inherit;padding:11px 14px;border-radius:6px;cursor:pointer;
+         border:1px solid var(--line);background:var(--accent);color:#06182e;width:100%;
+         margin-top:16px}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.ghost{background:var(--panel2);color:var(--text);margin-top:8px}
+
+  .note{margin-top:12px;padding:10px 12px;border-radius:6px;background:var(--panel);
+        border:1px solid var(--line);font-family:var(--mono);font-size:13px;color:var(--dim)}
+  .note b{color:var(--text)}
+
+  /* 그래프 노드 — 되돌아가는 것이 보여야 한다 */
+  .node{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+        padding:10px 12px;margin-bottom:8px}
+  .node .top{display:flex;align-items:center;gap:9px}
+  .node .dot{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+  .node .name{font-family:var(--mono);font-size:13.5px;font-weight:600}
+  .node .tag{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .node .body{font-size:12.5px;color:var(--dim);margin-top:5px;
+              font-family:var(--mono);word-break:break-word}
+  .node.run{border-color:var(--accent)}
+  .node.run .dot{background:var(--accent);animation:pulse 1s infinite}
+  .node.ok .dot{background:var(--ok)}
+  .node.fail{border-color:var(--err)}
+  .node.fail .dot{background:var(--err)}
+  .node.fail .body{color:var(--err)}
+  @keyframes pulse{50%{opacity:.25}}
+  .arrow{text-align:center;color:var(--line);font-size:16px;line-height:1;margin:-2px 0 6px}
+  .loop{text-align:center;font-family:var(--mono);font-size:12px;color:var(--warn);
+        margin:-2px 0 8px}
+
+  /* 원문 이벤트 로그 */
+  .log{margin-top:14px;border:1px solid var(--line);border-radius:8px;background:#0b0e12;
+       padding:10px;font-family:var(--mono);font-size:11.5px;color:var(--dim);
+       max-height:210px;overflow:auto;white-space:pre-wrap;word-break:break-all}
+  .log .e{color:var(--accent)}
+
+  /* 결과 */
+  .empty{color:var(--dim);font-size:13px;padding:20px 0}
+  .summary{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+           padding:12px;margin-bottom:12px}
+  .summary .goal{font-size:14.5px;margin-bottom:8px}
+  .stats{display:flex;flex-wrap:wrap;gap:6px}
+  .stat{font-family:var(--mono);font-size:12px;background:var(--panel2);
+        border:1px solid var(--line);border-radius:5px;padding:3px 8px;color:var(--dim)}
+  .stat b{color:var(--text)}
+  .week{border:1px solid var(--line);border-radius:8px;background:var(--panel);
+        padding:10px 12px;margin-bottom:8px}
+  .week .h{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+  .week .h .n{font-family:var(--mono);font-size:13px;color:var(--accent);font-weight:600}
+  .week .h .t{font-family:var(--mono);font-size:12px;color:var(--dim);margin-left:auto}
+  .slot{font-size:13px;padding:3px 0;display:flex;gap:8px}
+  .slot .hrs{font-family:var(--mono);font-size:12px;color:var(--dim);flex:none;width:78px}
+  .reason{font-size:12.5px;color:var(--dim);padding:2px 0 4px 86px;line-height:1.5}
+  .problems{border:1px solid var(--err);border-radius:8px;padding:10px 12px;
+            margin-bottom:12px;font-size:13px}
+  .problems .t{color:var(--err);font-weight:600;margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>커리큘럼 로드맵</h1>
+  <span class="sub">LLM 이 고르고 코드가 검증한다</span>
+  <span class="spacer"></span>
+  <span class="meta">카탈로그 <b id="cat">…</b>개 · 모델 호출 <b id="calls">0</b>회 · 토큰 <b id="tok">0</b></span>
+</header>
+
+<main>
+  <section class="col form">
+    <h2>입력</h2>
+    <label for="goal">목표</label>
+    <textarea id="goal">백엔드 개발자가 되고 싶다</textarea>
+    <div class="row">
+      <div><label for="weeks">기간 (주)</label><input id="weeks" type="number" min="1" max="104" value="8"></div>
+      <div><label for="hpw">주당 시간</label><input id="hpw" type="number" min="1" max="80" value="15"></div>
+    </div>
+    <label for="level">현재 수준</label>
+    <select id="level">
+      <option value="1" selected>L1 완전 입문</option>
+      <option value="2">L2 기초</option>
+      <option value="3">L3 중급</option>
+      <option value="4">L4 중상급</option>
+      <option value="5">L5 고급</option>
+    </select>
+    <div class="note">예산 <b id="budget">120</b>h</div>
+    <button id="run">생성 (스트리밍)</button>
+    <button id="run2" class="ghost">한 번에 받기</button>
+    <div class="note" style="margin-top:18px">
+      촬영 팁<br>
+      <b>2주 × 10h</b> 면 예산이 빠듯해<br>
+      재생성이 걸린다. 모델이 똑똑할수록<br>
+      한 번에 맞히니 안 걸리면 더 줄인다.<br>
+      <b>요리사가 되고 싶다</b> 를 넣으면<br>
+      빈 결과가 나온다.
+    </div>
+  </section>
+
+  <section class="col graph">
+    <h2>그래프</h2>
+    <div id="nodes"></div>
+    <div class="log" id="log">이벤트가 여기 흐른다.</div>
+  </section>
+
+  <section class="col result">
+    <h2>결과</h2>
+    <div id="out"><div class="empty">아직 없다. 왼쪽에서 생성한다.</div></div>
+  </section>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function budget(){ $('budget').textContent = (+$('weeks').value||0) * (+$('hpw').value||0); }
+['weeks','hpw'].forEach(id => $(id).addEventListener('input', budget));
+budget();
+
+fetch('/api/ai/curriculum/catalog').then(r => r.json())
+  .then(d => $('cat').textContent = d.count).catch(() => $('cat').textContent = '?');
+
+function body(){
+  return {goal: $('goal').value.trim(), weeks: +$('weeks').value,
+          hoursPerWeek: +$('hpw').value, level: +$('level').value};
+}
+function busy(on){ $('run').disabled = on; $('run2').disabled = on; }
+
+// 그래프 패널 -------------------------------------------------
+let nodes = [];
+function resetGraph(){ nodes = []; $('nodes').innerHTML = ''; $('log').innerHTML = ''; }
+
+function addNode(name, tag, cls, text){
+  if (nodes.length) {
+    const a = document.createElement('div');
+    a.className = 'arrow'; a.textContent = '↓';
+    $('nodes').appendChild(a);
+  }
+  const el = document.createElement('div');
+  el.className = 'node ' + (cls || '');
+  el.innerHTML = '<div class="top"><span class="dot"></span>'
+    + '<span class="name">' + esc(name) + '</span>'
+    + '<span class="tag">' + esc(tag || '') + '</span></div>'
+    + (text ? '<div class="body">' + esc(text) + '</div>' : '');
+  $('nodes').appendChild(el);
+  nodes.push(el);
+  el.scrollIntoView({block:'nearest'});
+  return el;
+}
+function markLoop(msg){
+  const d = document.createElement('div');
+  d.className = 'loop'; d.textContent = '↺ ' + msg;
+  $('nodes').appendChild(d);
+}
+// 진행 중이던 노드를 끝난 상태로 바꾼다.
+// 이미 실패로 칠해진 노드는 건드리지 않는다 — 되돌아간 자리가 초록이 되면
+// 영상에서 무엇 때문에 다시 돌았는지가 안 보인다.
+function settle(el){
+  if (!el) return;
+  el.classList.remove('run');
+  if (!el.classList.contains('fail')) el.classList.add('ok');
+}
+// 끊긴 자리. 성공도 실패도 아니므로 초록을 붙이지 않고 점멸만 멈춘다.
+// 안 멈추면 화면이 계속 도는 것처럼 보여서 촬영 중 사고가 사고로 안 보인다.
+function halt(el){ if (el) el.classList.remove('run'); }
+function log(ev, data){
+  $('log').innerHTML += '<span class="e">event: ' + esc(ev) + '</span>\n'
+    + esc(JSON.stringify(data)) + '\n\n';
+  $('log').scrollTop = $('log').scrollHeight;
+}
+
+// 결과 패널 ---------------------------------------------------
+function render(d){
+  const parts = [];
+  if (d.problems && d.problems.length) {
+    parts.push('<div class="problems"><div class="t">검증 문제 ' + d.problems.length + '건</div>'
+      + d.problems.map(esc).join('<br>') + '</div>');
+  }
+  parts.push('<div class="summary"><div class="goal">' + esc(d.goalSummary || '') + '</div>'
+    + '<div class="stats">'
+    + '<span class="stat">강의 <b>' + d.courses.length + '</b>개</span>'
+    + '<span class="stat"><b>' + d.totalHours + '</b>h / ' + d.budgetHours + 'h</span>'
+    + '<span class="stat"><b>' + d.weekCount + '</b>주</span>'
+    + '<span class="stat">모델 호출 <b>' + d.attempts + '</b>회</span>'
+    + '</div></div>');
+
+  const why = {};
+  d.courses.forEach(c => { why[c.title] = c.reason; });
+  const shown = new Set();
+  d.weeks.forEach(w => {
+    const slots = w.slots.map(s => {
+      const span = s.hours === s.totalHours ? s.hours + 'h' : s.hours + 'h / ' + s.totalHours + 'h';
+      let row = '<div class="slot"><span class="hrs">' + span + '</span><span>' + esc(s.title) + '</span></div>';
+      if (why[s.title] && !shown.has(s.title)) {
+        shown.add(s.title);
+        row += '<div class="reason">' + esc(why[s.title]) + '</div>';
+      }
+      return row;
+    }).join('');
+    parts.push('<div class="week"><div class="h"><span class="n">' + w.week + '주차</span>'
+      + '<span class="t">' + w.hours + 'h</span></div>' + slots + '</div>');
+  });
+  if (!d.weeks.length) {
+    parts.push('<div class="empty">고른 강의가 없다. 카탈로그에 목표와 맞는 것이 없으면 이렇게 된다.</div>');
+  }
+  $('out').innerHTML = parts.join('');
+}
+
+// 스트리밍 ----------------------------------------------------
+$('run').onclick = async () => {
+  busy(true); resetGraph();
+  $('out').innerHTML = '<div class="empty">생성 중…</div>';
+  let running = null;
+
+  try {
+    // EventSource 는 GET 만 된다. POST 로 흘려받으려면 이렇게 해야 한다.
+    const res = await fetch('/api/ai/curriculum/roadmap/stream', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body())
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({detail: res.statusText}));
+      addNode('ERROR', 'HTTP ' + res.status, 'fail', e.detail);
+      $('out').innerHTML = '<div class="problems"><div class="t">HTTP ' + res.status + '</div>'
+        + esc(e.detail) + '</div>';
+      busy(false); return;
+    }
+
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buf += dec.decode(chunk.value, {stream: true});
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const block = buf.slice(0, i); buf = buf.slice(i + 2);
+        const evm = block.match(/^event: (.+)$/m);
+        const dam = block.match(/^data: (.+)$/m);
+        if (!evm || !dam) continue;
+        const ev = evm[1], d = JSON.parse(dam[1]);
+        log(ev, ev === 'result'
+          ? {goalSummary: d.goalSummary, courses: d.courses.length, weeks: d.weekCount}
+          : d);
+
+        if (ev === 'start') {
+          addNode('START', '예산 ' + d.budgetHours + 'h · 카탈로그 ' + d.catalog + '개', 'ok');
+        } else if (ev === 'generate') {
+          settle(running);
+          $('calls').textContent = d.attempt;
+          $('tok').textContent = d.tokens.input + d.tokens.output;
+          running = addNode('generate', '시도 ' + d.attempt, 'run',
+            '강의 ' + d.selected + '개 고름 · 토큰 in ' + d.tokens.input);
+        } else if (ev === 'verify') {
+          settle(running);
+          if (d.ok) {
+            running = addNode('verify', '통과', 'ok', d.selected + '개 · ' + d.total_hours + 'h');
+          } else {
+            running = addNode('verify', '실패', 'fail', d.problems.join(' / '));
+            markLoop('generate 로 되돌아간다');
+          }
+        } else if (ev === 'schedule') {
+          settle(running);
+          running = addNode('schedule', d.week_count + '주', 'ok');
+        } else if (ev === 'result') {
+          settle(running); running = null;   // 여기서 비워야 아래 중단 검사가 안 걸린다
+          addNode('END', '', 'ok');
+          render(d);
+        } else if (ev === 'error') {
+          halt(running); running = null;
+          addNode('ERROR', 'HTTP ' + d.status, 'fail', d.detail);
+          $('out').innerHTML = '<div class="problems"><div class="t">모델 오류 ' + d.status + '</div>'
+            + esc(d.detail) + '</div>';
+        }
+      }
+    }
+    // 스트림이 result 도 error 도 없이 끝났다. 연결이 중간에 끊긴 경우다.
+    if (running) {
+      halt(running);
+      addNode('중단', '', 'fail', '스트림이 끝까지 오지 않았다');
+      $('out').innerHTML = '<div class="problems"><div class="t">중단</div>'
+        + '스트림이 끝까지 오지 않았다. 서버 로그를 본다.</div>';
+    }
+  } catch (e) {
+    halt(running);
+    addNode('ERROR', '', 'fail', String(e));
+    $('out').innerHTML = '<div class="problems"><div class="t">요청 실패</div>'
+      + esc(String(e)) + '</div>';
+  }
+  busy(false);
+};
+
+// 한 번에 받기 — 스트리밍과 비교용 -----------------------------
+$('run2').onclick = async () => {
+  busy(true); resetGraph();
+  const first = addNode('POST /roadmap', '기다리는 중', 'run',
+    '스트리밍이 아니라 끝날 때까지 아무것도 안 온다');
+  $('out').innerHTML = '<div class="empty">생성 중…</div>';
+  const t0 = performance.now();
+  try {
+    const res = await fetch('/api/ai/curriculum/roadmap', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body())
+    });
+    const d = await res.json();
+    const ms = Math.round(performance.now() - t0);
+    first.classList.remove('run');
+    if (!res.ok) {
+      first.classList.add('fail');
+      first.querySelector('.tag').textContent = 'HTTP ' + res.status;
+      first.querySelector('.body').textContent = d.detail;
+      $('out').innerHTML = '<div class="problems"><div class="t">HTTP ' + res.status + '</div>'
+        + esc(d.detail) + '</div>';
+    } else {
+      first.classList.add('ok');
+      first.querySelector('.tag').textContent = ms + 'ms';
+      first.querySelector('.body').textContent = '이 시간 동안 화면은 아무것도 못 보여준다';
+      $('calls').textContent = d.attempts;
+      render(d);
+    }
+  } catch (e) {
+    halt(first);
+    addNode('ERROR', '', 'fail', String(e));
+    $('out').innerHTML = '<div class="problems"><div class="t">요청 실패</div>'
+      + esc(String(e)) + '</div>';
+  }
+  busy(false);
+};
+</script>
+</body>
+</html>
