@@ -11,7 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from langchain_core.embeddings import Embeddings
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # LangChain 계열은 BaseSettings 가 아니라 os.environ 을 직접 읽는다.
@@ -41,6 +41,16 @@ CHUNK_OVERLAP = 120  # 겹침. 경계에 걸친 설명이 양쪽 어디에도 �
 
 TOP_K = 5  # 가져올 조각 수. 임의값
 
+# 1단계 판정 기준. 최고 유사도가 이 값 미만이면 내용 판정을 돌리지 않고 부족으로 본다.
+# 임의값이고 6단계에서 실제 점수 분포를 보고 조정한다
+MIN_SCORE = 0.35
+
+# 재검색 상한. 이 값이 없으면 루프가 끝나지 않는다
+MAX_RETRY = 2
+
+# 한 실행에서 밟을 수 있는 최대 단계. 루프가 잘못 돌아도 호출만 쌓이는 것을 막는다
+RECURSION_LIMIT = 12
+
 
 # 3. 환경 설정
 class Settings(BaseSettings):
@@ -51,6 +61,7 @@ class Settings(BaseSettings):
     # 필수로 두면 키 없이는 서버가 아예 안 떠서 "뼈대가 도는가"를 확인할 수 없다.
     # 빈 값 검사는 실제로 모델을 부르는 S1 의 팩토리에서 한다
     GEMINI_API_KEY: str = ""
+    LLM_MODEL: str = "gemini-3.1-flash-lite"
     EMBEDDING_MODEL: str = "models/gemini-embedding-001"  # 한국어·영어를 함께 처리한다
 
     # 트레이싱: 기본값을 반드시 준다.
@@ -77,3 +88,11 @@ def get_embeddings() -> Embeddings:
     if not settings.GEMINI_API_KEY:
         raise RuntimeError("GEMINI_API_KEY 가 비어 있다. .env 에 넣는다")
     return GoogleGenerativeAIEmbeddings(model=settings.EMBEDDING_MODEL)
+
+
+# 6. LLM 팩토리
+def get_llm(temperature: float = 0.0):
+    if not settings.GEMINI_API_KEY:
+        raise RuntimeError("GEMINI_API_KEY 가 비어 있다. .env 에 넣는다")
+    # 판정과 답변 모두 지어내면 안 되는 작업이라 기본 온도를 0 으로 둔다
+    return ChatGoogleGenerativeAI(model=settings.LLM_MODEL, temperature=temperature)
