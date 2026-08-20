@@ -12,11 +12,14 @@ add_node 로 등록해 둬도 소용없다. 매핑이 갈 수 있는 길의 전�
 
 from typing import Literal
 
+from app.core.config import MAX_RETRY
 from app.graph.state import TutorState
 
 
-def route_grade(state: TutorState) -> Literal["generate", "no_evidence"]:
+def route_grade(state: TutorState) -> Literal["generate", "rewrite", "no_evidence"]:
     if state.get("graded_ok"):
         return "generate"
-    # S4 에서 여기에 재검색 갈래가 들어온다. 지금은 바로 닫는다
+    if state.get("retry", 0) < MAX_RETRY:
+        return "rewrite"
+    # 이 갈래가 없으면 루프가 끝나지 않는다
     return "no_evidence"
