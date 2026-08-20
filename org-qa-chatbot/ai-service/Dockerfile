@@ -1,15 +1,15 @@
 # 빌드 컨텍스트는 저장소 루트다 (compose의 context: . 와 맞춘다).
-# 다른 서비스와 같은 규칙이라 COPY 경로에 ai-service/ 가 붙는다.
+# 다른 서비스와 같은 규칙이라 COPY 경로에 org-qa-chatbot/ai-service/ 가 붙는다.
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 
 WORKDIR /app
 
 # 의존성만 먼저 넣어서 레이어를 재사용한다. 소스가 바뀌어도 lock이 그대로면
 # 이 레이어는 캐시에서 나온다.
-COPY ai-service/pyproject.toml ai-service/uv.lock ./
+COPY org-qa-chatbot/ai-service/pyproject.toml org-qa-chatbot/ai-service/uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 
-COPY ai-service/app ./app
+COPY org-qa-chatbot/ai-service/app ./app
 
 # 컨테이너 안에서는 .venv를 직접 쓴다. uv run은 매 실행마다 잠금을 확인하므로
 # 기동 경로에서는 불필요한 일이다.

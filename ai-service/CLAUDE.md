@@ -1,4 +1,4 @@
-# CLAUDE.md — ai-service 작업 규칙
+# CLAUDE.md: ai-service 작업 규칙
 
 막힌 지점과 그 해결을 남긴다. 다음 세션에서 같은 곳을 다시 밟지 않기 위한 것이다.
 
@@ -13,10 +13,15 @@
 ## Windows 환경
 
 - **PowerShell에서 `curl`은 `Invoke-WebRequest` 별칭이다.** `curl -i ...`가
-  `missing mandatory parameters: Uri`로 죽는다 — **요청이 나가지도 않았는데 서버 문제로 보인다**
+  `missing mandatory parameters: Uri`로 죽는다. **요청이 나가지도 않았는데 서버 문제로 보인다**
   → PowerShell에서는 **`curl.exe`**를 쓴다. Git Bash에서는 `curl` 그대로 된다.
+- **Git Bash 에서 `curl -d '{"question":"한글"}'` 은 깨진다.** 서버가
+  `400 There was an error parsing the body` 를 돌려주는데, 본문이 잘못된 게 아니라
+  셸이 인코딩을 바꾼 것이다 → JSON 을 파일에 쓰고 `--data-binary @파일` 로 보낸다.
+- **Windows 파이썬은 Git Bash 의 `/tmp` 를 못 본다.** 윈도우 경로로 해석해서
+  `FileNotFoundError` 가 난다. 임시 파일은 셸 쪽에서 만든다.
 - **서버는 `ai-service/`에서 띄운다.** 저장소 루트에서 `uv run uvicorn`을 하면
-  `Failed to spawn: uvicorn — program not found`가 나는데 디렉터리 문제라는 말이 없다.
+  `Failed to spawn: uvicorn. program not found`가 나는데 디렉터리 문제라는 말이 없다.
 
 ## 로깅
 
@@ -29,11 +34,18 @@
 
 - **`app/core/security.py`의 `require_member_id()`는 신뢰 지점 단 하나다.** 엔드포인트에서
   `X-Member-Id`를 직접 읽지 않는다. 5기 MSA에 붙일 때 이 함수만 JWKS 검증으로 교체한다.
-- **`visibility` 필터는 Chroma 질의 조건으로 건다.** 가져온 뒤 걸러내지 않는다 —
+- **`visibility` 필터는 Chroma 질의 조건으로 건다.** 가져온 뒤 걸러내지 않는다.
   한 곳만 빠뜨려도 미션 정답이 나가고, 그건 되돌릴 수 없다.
 - **`no_evidence` 경로에서는 모델에 조각을 넘기지 않는다.** 넘기지 않으면 지어낼 재료가 없다.
 - **색인과 검색은 반드시 같은 임베딩 모델을 쓴다.** 다르면 벡터 공간이 어긋나 검색이
   조용히 이상해진다. 그래서 팩토리 함수 하나로 강제한다.
+
+## 글쓰기
+
+- 줄표(U+2014)를 쓰지 않는다. 콜론, 마침표, 괄호로 바꾼다.
+- 뻔한 변경까지 정당화하지 않는다. 안 뻔한 것만 이유를 적는다.
+- 같은 문장 구조를 반복하지 않는다. "A했다. 왜냐하면 B다"가 문단마다 나오면 고친다.
+- 커밋 본문은 3~6줄, PR 본문은 50줄 안팎을 넘기지 않는다.
 
 ## 코드 스타일
 

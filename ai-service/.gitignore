@@ -27,3 +27,9 @@ logs/
 # 생성물이다. scripts/build_corpus.py 로 다시 만들 수 있고,
 # 원본은 다른 저장소의 학습 자료라 여기 복사본을 커밋하지 않는다
 data/raw/courses/
+
+# 퀴즈는 개인 학습 기록이다. 저장소에 올리지 않는다
+docs/quiz/
+
+# 체크포인터 저장소. 그래프 재개용이라 다시 만들 수 있다
+data/checkpoints.sqlite

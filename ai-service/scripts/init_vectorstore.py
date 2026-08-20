@@ -1,5 +1,5 @@
 """
-scripts/init_vectorstore.py — 교안을 조각내어 Chroma 에 적재한다
+scripts/init_vectorstore.py: 교안을 조각내어 Chroma 에 적재한다
 
 이 파일의 역할: data/raw/courses 의 마크다운을 분할·메타 부착·임베딩해서 색인을 만든다.
 → scripts/build_corpus.py 가 만든 결과를 읽는다
@@ -43,7 +43,7 @@ HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
 
 
-# 1. 블록 나누기 — 코드 펜스 안에서는 제목도 문단도 인식하지 않는다.
+# 1. 블록 나누기: 코드 펜스 안에서는 제목도 문단도 인식하지 않는다.
 # 파이썬 주석 "# 출력" 이 제목으로 잡히는 문제를 build_corpus 에서 이미 겪었다
 def parse_blocks(text: str) -> list[tuple[tuple[str, ...], str, str]]:
     blocks: list[tuple[tuple[str, ...], str, str]] = []
@@ -203,7 +203,7 @@ def report(texts: list[str], metas: list[dict]) -> None:
         print("  ← 코드 블록이 아닌데 상한을 넘은 조각이 있다. 분할 규칙을 본다")
 
 
-# 4. 적재 — 한도에 걸리면 기다렸다 같은 배치를 다시 넣는다.
+# 4. 적재: 한도에 걸리면 기다렸다 같은 배치를 다시 넣는다.
 # 여기서 포기하면 앞서 넣은 것만 남아 반쪽 색인이 된다
 def add_with_retry(store, texts, metas, ids, tries: int = 5) -> None:
     for attempt in range(tries):
