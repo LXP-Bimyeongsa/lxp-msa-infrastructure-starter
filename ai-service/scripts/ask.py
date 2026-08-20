@@ -35,10 +35,12 @@ def main() -> None:
     )
 
     print(f"route      : {state['route']}")
-    print(f"top_score  : {state['top_score']:.3f}")
-    print(f"검색 질의  : {state['search_query']}")
-    print(f"판정       : {'충분' if state.get('graded_ok') else '부족'}")
-    print(f"재검색     : {state.get('retry', 0)}회")
+    print(f"intent     : {state.get('intent', '-')}")
+    print(f"top_score  : {state.get('top_score', 0.0):.3f}")
+    print(f"검색 질의  : {state.get('search_query', '(검색 안 함)')}")
+    if "graded_ok" in state:
+        print(f"판정       : {'충분' if state['graded_ok'] else '부족'}")
+        print(f"재검색     : {state.get('retry', 0)}회")
     print(f"인용 조각  : {len(state['citations'])}개")
     for c in state["citations"]:
         print(f"  {c['score']:.3f}  {c['source_path']}#{c['seq']}")
